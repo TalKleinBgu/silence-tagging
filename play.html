@@ -542,78 +542,132 @@
                 return savedTags ? JSON.parse(savedTags) : {};
             };
 
+            // Save dataset to Firebase and localStorage
+            const saveDatasetToStorage = async (data) => {
+                localStorage.setItem('podcast-dataset', JSON.stringify(data));
+                if (window.firebaseEnabled && window.database) {
+                    try {
+                        await window.database.ref('dataset').set(data);
+                        console.log('Dataset saved to Firebase');
+                    } catch (error) {
+                        console.error('Error saving dataset to Firebase:', error);
+                    }
+                }
+            };
+
+            // Load dataset from Firebase or localStorage
+            const loadDatasetFromStorage = async () => {
+                if (window.firebaseEnabled && window.database) {
+                    try {
+                        const snapshot = await window.database.ref('dataset').once('value');
+                        const data = snapshot.val();
+                        if (data && Array.isArray(data) && data.length > 0) {
+                            console.log('Dataset loaded from Firebase:', data.length, 'items');
+                            return data;
+                        }
+                    } catch (error) {
+                        console.error('Error loading dataset from Firebase:', error);
+                    }
+                }
+                
+                // Fallback to localStorage
+                const savedDataset = localStorage.getItem('podcast-dataset');
+                if (savedDataset) {
+                    const data = JSON.parse(savedDataset);
+                    if (data && Array.isArray(data) && data.length > 0) {
+                        console.log('Dataset loaded from localStorage:', data.length, 'items');
+                        return data;
+                    }
+                }
+                return null;
+            };
+
+            // Fetch dataset from HuggingFace
+            const fetchFromHuggingFace = async () => {
+                let apiUrl = 'https://datasets-server.huggingface.co/rows?dataset=Zivf/silence-hebrew-multispeaker&config=default&split=train&offset=0&length=100';
+                
+                console.log('Fetching from HuggingFace:', apiUrl);
+                let response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    // Try alternative API endpoint
+                    apiUrl = 'https://datasets-server.huggingface.co/first-rows?dataset=Zivf/silence-hebrew-multispeaker&config=default&split=train';
+                    console.log('Trying alternative endpoint:', apiUrl);
+                    response = await fetch(apiUrl);
+                }
+                
+                if (!response.ok) {
+                    throw new Error(`לא ניתן לטעון דאטא מ-HuggingFace (${response.status})`);
+                }
+                
+                const data = await response.json();
+                console.log('Received data from HuggingFace:', data);
+                
+                // Handle different response formats
+                const rows = data.rows || data.features || [];
+                
+                if (rows.length === 0) {
+                    throw new Error('לא נמצאו שורות בדאטאסט');
+                }
+                
+                // Transform the data to our format
+                const transformedData = rows.map((item, index) => {
+                    const row = item.row || item;
+                    
+                    // Handle audio path - it's an array with src property
+                    let audioUrl = null;
+                    if (row.audio_clip_path) {
+                        if (Array.isArray(row.audio_clip_path) && row.audio_clip_path.length > 0) {
+                            audioUrl = row.audio_clip_path[0].src || row.audio_clip_path[0];
+                        } else if (typeof row.audio_clip_path === 'string') {
+                            audioUrl = row.audio_clip_path;
+                        } else if (row.audio_clip_path.src) {
+                            audioUrl = row.audio_clip_path.src;
+                        } else if (row.audio_clip_path.path) {
+                            audioUrl = `https://huggingface.co/datasets/Zivf/silence-hebrew-multispeaker/resolve/main/${row.audio_clip_path.path}`;
+                        }
+                    }
+                    
+                    return {
+                        id: `item_${row.id || index}`,
+                        text_before: row.text || '',
+                        silence_duration: row.silence_duration_sec || 0,
+                        text_after: row.next_text || '',
+                        audio_url: audioUrl,
+                        speaker: row.speaker || '',
+                        next_speaker: row.next_speaker || '',
+                        podcast_id: row.podcast_id || ''
+                    };
+                });
+                
+                return transformedData;
+            };
+
             const loadData = async () => {
                 try {
                     setError(null);
                     
-                    // Try HuggingFace datasets viewer API
-                    let apiUrl = 'https://datasets-server.huggingface.co/rows?dataset=Zivf/silence-hebrew-multispeaker&config=default&split=train&offset=0&length=100';
+                    // First, try to load from Firebase/localStorage
+                    const savedDataset = await loadDatasetFromStorage();
                     
-                    console.log('Fetching from:', apiUrl);
-                    let response = await fetch(apiUrl);
-                    
-                    if (!response.ok) {
-                        // Try alternative API endpoint
-                        apiUrl = 'https://datasets-server.huggingface.co/first-rows?dataset=Zivf/silence-hebrew-multispeaker&config=default&split=train';
-                        console.log('Trying alternative endpoint:', apiUrl);
-                        response = await fetch(apiUrl);
-                    }
-                    
-                    if (!response.ok) {
-                        throw new Error(`לא ניתן לטעון דאטא מ-HuggingFace (${response.status})`);
-                    }
-                    
-                    const data = await response.json();
-                    console.log('Received data:', data);
-                    
-                    // Handle different response formats
-                    const rows = data.rows || data.features || [];
-                    
-                    if (rows.length === 0) {
-                        throw new Error('לא נמצאו שורות בדאטאסט');
-                    }
-                    
-                    // Transform the data to our format
-                    const transformedData = rows.map((item, index) => {
-                        const row = item.row || item;
+                    if (savedDataset) {
+                        console.log('Using cached dataset');
+                        setDataset(savedDataset);
+                    } else {
+                        // If no cached data, fetch from HuggingFace
+                        console.log('No cached dataset, fetching from HuggingFace...');
+                        const transformedData = await fetchFromHuggingFace();
                         
-                        // Handle audio path - it's an array with src property
-                        let audioUrl = null;
-                        if (row.audio_clip_path) {
-                            if (Array.isArray(row.audio_clip_path) && row.audio_clip_path.length > 0) {
-                                // Audio is in array format with src property
-                                audioUrl = row.audio_clip_path[0].src || row.audio_clip_path[0];
-                            } else if (typeof row.audio_clip_path === 'string') {
-                                audioUrl = row.audio_clip_path;
-                            } else if (row.audio_clip_path.src) {
-                                audioUrl = row.audio_clip_path.src;
-                            } else if (row.audio_clip_path.path) {
-                                audioUrl = `https://huggingface.co/datasets/Zivf/silence-hebrew-multispeaker/resolve/main/${row.audio_clip_path.path}`;
-                            }
+                        if (transformedData.length === 0) {
+                            throw new Error('לא הצלחנו לעבד את הדאטא');
                         }
                         
-                        console.log(`Item ${index} audio URL:`, audioUrl);
+                        setDataset(transformedData);
                         
-                        return {
-                            id: `item_${row.id || index}`,
-                            text_before: row.text || '',
-                            silence_duration: row.silence_duration_sec || 0,
-                            text_after: row.next_text || '',
-                            audio_url: audioUrl,
-                            speaker: row.speaker || '',
-                            next_speaker: row.next_speaker || '',
-                            podcast_id: row.podcast_id || ''
-                        };
-                    });
-                    
-                    console.log('Transformed data:', transformedData);
-                    
-                    if (transformedData.length === 0) {
-                        throw new Error('לא הצלחנו לעבד את הדאטא');
+                        // Save to Firebase for future use
+                        await saveDatasetToStorage(transformedData);
+                        console.log('Dataset cached for future use');
                     }
-                    
-                    setDataset(transformedData);
-
                     
                     // Load existing tags from Firebase or localStorage
                     try {
@@ -628,7 +682,7 @@
                 } catch (error) {
                     console.error('Error loading data:', error);
                     const errorMsg = error.message || 'שגיאה לא ידועה';
-                    setError(`בעיה בטעינת דאטא מ-HuggingFace: ${errorMsg}. משתמש בדאטא לדוגמה.`);
+                    setError(`בעיה בטעינת דאטא: ${errorMsg}. משתמש בדאטא לדוגמה.`);
                     
                     // Use sample data as fallback
                     const sampleData = [
@@ -1027,7 +1081,7 @@
             };
 
             // Import dataset from JSON
-            const importDataset = (jsonData) => {
+            const importDataset = async (jsonData) => {
                 try {
                     const data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
                     if (!Array.isArray(data)) {
@@ -1049,7 +1103,10 @@
                     setDataset(validatedData);
                     setCurrentIndex(0);
                     setImportJsonText('');
-                    alert(`יובאו ${validatedData.length} פריטים בהצלחה!`);
+                    
+                    // Save to Firebase
+                    await saveDatasetToStorage(validatedData);
+                    alert(`יובאו ${validatedData.length} פריטים בהצלחה ונשמרו!`);
                 } catch (error) {
                     console.error('Import error:', error);
                     alert('שגיאה בייבוא: ' + error.message);
@@ -2460,13 +2517,28 @@
                                         </div>
                                     </div>
                                     
-                                    <div className="mt-4 pt-4 border-t">
+                                    <div className="mt-4 pt-4 border-t space-y-2">
                                         <button
-                                            onClick={loadData}
+                                            onClick={async () => {
+                                                if (!confirm('האם לטעון מחדש מ-HuggingFace? פעולה זו תחליף את הדאטא הקיים.')) return;
+                                                setLoading(true);
+                                                try {
+                                                    const newData = await fetchFromHuggingFace();
+                                                    setDataset(newData);
+                                                    await saveDatasetToStorage(newData);
+                                                    alert(`נטענו ${newData.length} פריטים מ-HuggingFace ונשמרו!`);
+                                                } catch (err) {
+                                                    alert('שגיאה בטעינה: ' + err.message);
+                                                }
+                                                setLoading(false);
+                                            }}
                                             className="w-full py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg font-medium transition"
                                         >
                                             🔄 טען מחדש מ-HuggingFace
                                         </button>
+                                        <p className="text-xs text-gray-500 text-center">
+                                            הדאטא נשמר ב-Firebase ונטען אוטומטית
+                                        </p>
                                     </div>
                                 </div>
 
