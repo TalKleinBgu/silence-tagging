@@ -174,7 +174,7 @@
             const [editingDataValues, setEditingDataValues] = useState({}); // values being edited
             const [dataSearchTerm, setDataSearchTerm] = useState('');
             const [importJsonText, setImportJsonText] = useState('');
-            const [skipTagged, setSkipTagged] = useState(false); // Skip already tagged items
+            const [untaggedIndex, setUntaggedIndex] = useState(0); // Index within untagged items only
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
 
@@ -214,44 +214,21 @@
                     const itemTags = allTags[item.id] || [];
                     const userTagged = itemTags.find(t => t.username === username);
                     if (userTagged) {
-                        tagged.push({ ...item, index: idx, userTags: userTagged.tags, timestamp: userTagged.timestamp });
+                        tagged.push({ ...item, originalIndex: idx, userTags: userTagged.tags, timestamp: userTagged.timestamp });
                     } else {
-                        untagged.push({ ...item, index: idx });
+                        untagged.push({ ...item, originalIndex: idx });
                     }
                 });
                 
                 return { tagged, untagged, total: allowedDataset.length };
             };
 
-            // Get next untagged item index
-            const getNextUntaggedIndex = (fromIndex = 0) => {
-                for (let i = fromIndex; i < allowedDataset.length; i++) {
-                    const item = allowedDataset[i];
+            // Get only untagged items for the tagging tab
+            const getUntaggedItems = () => {
+                return allowedDataset.filter(item => {
                     const itemTags = allTags[item.id] || [];
-                    if (!itemTags.some(t => t.username === username)) {
-                        return i;
-                    }
-                }
-                // If no untagged found after fromIndex, search from beginning
-                for (let i = 0; i < fromIndex; i++) {
-                    const item = allowedDataset[i];
-                    const itemTags = allTags[item.id] || [];
-                    if (!itemTags.some(t => t.username === username)) {
-                        return i;
-                    }
-                }
-                return -1; // All tagged
-            };
-
-            // Jump to first untagged item
-            const jumpToNextUntagged = () => {
-                const nextIdx = getNextUntaggedIndex(currentIndex);
-                if (nextIdx >= 0) {
-                    setCurrentIndex(nextIdx);
-                    setSelectedTags([]);
-                } else {
-                    alert('כל הכבוד! תייגת את כל הפריטים!');
-                }
+                    return !itemTags.some(t => t.username === username);
+                });
             };
 
             // Load dataset and tags from storage
@@ -627,9 +604,9 @@
 
             const saveTags = async () => {
                 if (selectedTags.length === 0) return;
+                if (!currentUntaggedItem) return;
 
-                const saveDataset = isAdmin ? dataset : allowedDataset;
-                const currentItem = saveDataset[currentIndex];
+                const currentItem = currentUntaggedItem;
                 const tagEntry = {
                     username,
                     itemId: currentItem.id,
@@ -658,29 +635,13 @@
                     await saveTagsToStorage(updatedTags);
                     setAllTags(updatedTags);
                     
-                    // Move to next item
-                    if (currentIndex < saveDataset.length - 1) {
-                        if (skipTagged) {
-                            // Find next untagged item
-                            let nextIdx = -1;
-                            for (let i = currentIndex + 1; i < saveDataset.length; i++) {
-                                const item = saveDataset[i];
-                                const itemTags = updatedTags[item.id] || [];
-                                if (!itemTags.some(t => t.username === username)) {
-                                    nextIdx = i;
-                                    break;
-                                }
-                            }
-                            if (nextIdx >= 0) {
-                                setCurrentIndex(nextIdx);
-                            } else {
-                                // All remaining are tagged, stay at current or go to last
-                                setCurrentIndex(currentIndex + 1);
-                            }
-                        } else {
-                            setCurrentIndex(currentIndex + 1);
-                        }
-                        setSelectedTags([]);
+                    // After saving, the item is now tagged, so it will be removed from untaggedItems
+                    // The untaggedIndex stays the same to show the next untagged item
+                    // If we were at the last item, go back to 0
+                    setSelectedTags([]);
+                    // Reset index if needed (will auto-adjust since untaggedItems recalculates)
+                    if (untaggedIndex >= untaggedItems.length - 1) {
+                        setUntaggedIndex(0);
                     }
                 } catch (error) {
                     console.error('Error saving tags:', error);
@@ -699,11 +660,10 @@
                 }
             };
 
-            const navigateItem = (direction) => {
-                const navDataset = isAdmin ? dataset : allowedDataset;
-                const newIndex = currentIndex + direction;
-                if (newIndex >= 0 && newIndex < navDataset.length) {
-                    setCurrentIndex(newIndex);
+            const navigateUntaggedItem = (direction) => {
+                const newIndex = untaggedIndex + direction;
+                if (newIndex >= 0 && newIndex < untaggedItems.length) {
+                    setUntaggedIndex(newIndex);
                     setSelectedTags([]);
                     setIsPlaying(false);
                     if (audioRef.current) {
@@ -1165,10 +1125,13 @@
 
             // Use allowedDataset for non-admin users
             const displayDataset = isAdmin ? dataset : allowedDataset;
-            const currentItem = displayDataset[currentIndex];
+            
+            // For tagging tab - only show untagged items
+            const untaggedItems = getUntaggedItems();
+            const currentUntaggedItem = untaggedItems[untaggedIndex];
             
             // Handle case where user has no assigned items
-            if (!currentItem) {
+            if (displayDataset.length === 0) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
@@ -1185,10 +1148,13 @@
                 );
             }
             
-            const userTagsForItem = getUserTags(currentItem.id);
-            const tagAgreement = getTagAgreement(currentItem.id);
+            // Current item for display (use untagged item for tagging tab logic)
+            const currentItem = currentUntaggedItem || displayDataset[0];
+            const userTagsForItem = currentItem ? getUserTags(currentItem.id) : [];
+            const tagAgreement = currentItem ? getTagAgreement(currentItem.id) : {};
             const userHasTagged = userTagsForItem.some(t => t.username === username);
             const stats = getStatistics();
+            const progress = getUserProgress();
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
@@ -1279,7 +1245,10 @@
                                     <div className="text-left">
                                         <div className="text-sm text-gray-500">התקדמות</div>
                                         <div className="text-2xl font-bold text-blue-600">
-                                            {currentIndex + 1} / {displayDataset.length}
+                                            {progress.tagged.length} / {progress.total}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            נותרו: {progress.untagged.length}
                                         </div>
                                     </div>
                                 </div>
@@ -1333,18 +1302,49 @@
 
                         {/* Tagging Tab */}
                         {activeTab === 'tagging' && (
+                            untaggedItems.length === 0 ? (
+                                // All items tagged - show completion screen
+                                <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+                                    <div className="text-6xl mb-4">🎉</div>
+                                    <h2 className="text-2xl font-bold text-green-600 mb-2">כל הכבוד!</h2>
+                                    <p className="text-gray-600 mb-4">סיימת לתייג את כל הפריטים שהוקצו לך!</p>
+                                    <div className="text-lg text-gray-700">
+                                        תייגת <span className="font-bold text-blue-600">{progress.tagged.length}</span> פריטים
+                                    </div>
+                                    <button
+                                        onClick={() => setActiveTab('myProgress')}
+                                        className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
+                                    >
+                                        צפה בתיוגים שלי
+                                    </button>
+                                </div>
+                            ) : (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 {/* Left Panel - Audio & Text */}
                                 <div className="lg:col-span-2 space-y-6">
+                                    {/* Progress indicator */}
+                                    <div className="bg-white rounded-2xl shadow-lg p-4">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-sm text-gray-600">פריט {untaggedIndex + 1} מתוך {untaggedItems.length} שנותרו</span>
+                                            <span className="text-sm text-green-600">{progress.tagged.length} תויגו</span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                            <div 
+                                                className="bg-green-500 h-2 rounded-full transition-all"
+                                                style={{ width: `${(progress.tagged.length / progress.total) * 100}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+
                                     {/* Audio Player */}
                                     <div className="bg-white rounded-2xl shadow-lg p-6">
                                         <h2 className="text-xl font-semibold mb-4 text-gray-800">נגן אודיו</h2>
                                         
-                                        {currentItem.audio_url ? (
+                                        {currentUntaggedItem?.audio_url ? (
                                             <>
                                                 <audio
                                                     ref={audioRef}
-                                                    src={currentItem.audio_url}
+                                                    src={currentUntaggedItem.audio_url}
                                                     onEnded={() => setIsPlaying(false)}
                                                     onError={(e) => console.error('Audio error:', e)}
                                                     className="w-full mb-4"
@@ -1352,8 +1352,8 @@
                                                 />
                                                 <div className="flex items-center justify-center gap-4">
                                                     <button
-                                                        onClick={() => navigateItem(-1)}
-                                                        disabled={currentIndex === 0}
+                                                        onClick={() => navigateUntaggedItem(-1)}
+                                                        disabled={untaggedIndex === 0}
                                                         className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
                                                     >
                                                         <SkipBackIcon />
@@ -1365,8 +1365,8 @@
                                                         {isPlaying ? <PauseIcon /> : <PlayIcon />}
                                                     </button>
                                                     <button
-                                                        onClick={() => navigateItem(1)}
-                                                        disabled={currentIndex === displayDataset.length - 1}
+                                                        onClick={() => navigateUntaggedItem(1)}
+                                                        disabled={untaggedIndex === untaggedItems.length - 1}
                                                         className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
                                                     >
                                                         <SkipForwardIcon />
@@ -1378,15 +1378,15 @@
                                                 <p>אין אודיו זמין לפריט זה</p>
                                                 <div className="flex items-center justify-center gap-4 mt-4">
                                                     <button
-                                                        onClick={() => navigateItem(-1)}
-                                                        disabled={currentIndex === 0}
+                                                        onClick={() => navigateUntaggedItem(-1)}
+                                                        disabled={untaggedIndex === 0}
                                                         className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
                                                     >
                                                         <SkipBackIcon />
                                                     </button>
                                                     <button
-                                                        onClick={() => navigateItem(1)}
-                                                        disabled={currentIndex === displayDataset.length - 1}
+                                                        onClick={() => navigateUntaggedItem(1)}
+                                                        disabled={untaggedIndex === untaggedItems.length - 1}
                                                         className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
                                                     >
                                                         <SkipForwardIcon />
@@ -1402,20 +1402,20 @@
                                         
                                         <div className="space-y-4">
                                             <div className="p-4 bg-blue-50 rounded-lg">
-                                                <div className="text-sm text-gray-600 mb-1">לפני השתיקה - {currentItem.speaker}</div>
-                                                <div className="text-lg text-gray-800 font-medium">{currentItem.text_before}</div>
+                                                <div className="text-sm text-gray-600 mb-1">לפני השתיקה - {currentUntaggedItem?.speaker}</div>
+                                                <div className="text-lg text-gray-800 font-medium">{currentUntaggedItem?.text_before}</div>
                                             </div>
 
                                             <div className="text-center py-3">
                                                 <div className="inline-block px-4 py-2 bg-yellow-100 rounded-full">
                                                     <span className="text-sm text-gray-600">משך השתיקה: </span>
-                                                    <span className="font-bold text-gray-800">{currentItem.silence_duration.toFixed(2)}s</span>
+                                                    <span className="font-bold text-gray-800">{currentUntaggedItem?.silence_duration?.toFixed(2)}s</span>
                                                 </div>
                                             </div>
 
                                             <div className="p-4 bg-green-50 rounded-lg">
-                                                <div className="text-sm text-gray-600 mb-1">אחרי השתיקה - {currentItem.next_speaker}</div>
-                                                <div className="text-lg text-gray-800 font-medium">{currentItem.text_after}</div>
+                                                <div className="text-sm text-gray-600 mb-1">אחרי השתיקה - {currentUntaggedItem?.next_speaker}</div>
+                                                <div className="text-lg text-gray-800 font-medium">{currentUntaggedItem?.text_after}</div>
                                             </div>
                                         </div>
                                     </div>
@@ -1458,39 +1458,6 @@
                                             <span>שמור תגיות</span>
                                         </button>
 
-                                        {userHasTagged && (
-                                            <div className="mt-3 text-sm text-green-600 text-center">
-                                                ✓ כבר תייגת את הפריט הזה
-                                            </div>
-                                        )}
-                                        
-                                        {/* Skip to next untagged - for all users */}
-                                        <div className="mt-4 pt-4 border-t border-gray-200">
-                                            <div className="flex items-center gap-2 mb-3">
-                                                <input
-                                                    type="checkbox"
-                                                    id="skipTaggedInline"
-                                                    checked={skipTagged}
-                                                    onChange={(e) => setSkipTagged(e.target.checked)}
-                                                    className="w-4 h-4 text-blue-600 rounded"
-                                                />
-                                                <label htmlFor="skipTaggedInline" className="text-sm text-gray-700">
-                                                    דלג על פריטים שתויגו
-                                                </label>
-                                            </div>
-                                            <button
-                                                onClick={jumpToNextUntagged}
-                                                className="w-full py-2 bg-orange-100 text-orange-700 rounded-lg font-medium hover:bg-orange-200 transition text-sm"
-                                            >
-                                                ⏭ קפוץ לפריט הבא שלא תויג
-                                            </button>
-                                            <div className="mt-2 text-xs text-gray-500 text-center">
-                                                {(() => {
-                                                    const progress = getUserProgress();
-                                                    return `${progress.tagged.length}/${progress.total} תויגו`;
-                                                })()}
-                                            </div>
-                                        </div>
                                     </div>
 
                                     {/* Tag Statistics for this item - Admin only */}
@@ -1534,6 +1501,7 @@
                                     )}
                                 </div>
                             </div>
+                            )
                         )}
 
                         {/* My Progress Tab - for all users */}
@@ -1579,25 +1547,12 @@
                                                 
                                                 <div className="mt-6 space-y-3">
                                                     <button
-                                                        onClick={() => { jumpToNextUntagged(); setActiveTab('tagging'); }}
+                                                        onClick={() => { setUntaggedIndex(0); setActiveTab('tagging'); }}
                                                         disabled={progress.untagged.length === 0}
                                                         className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
                                                     >
                                                         {progress.untagged.length > 0 ? '▶ המשך לתייג' : '✓ סיימת הכל!'}
                                                     </button>
-                                                    
-                                                    <div className="flex items-center gap-2 justify-center">
-                                                        <input
-                                                            type="checkbox"
-                                                            id="skipTagged"
-                                                            checked={skipTagged}
-                                                            onChange={(e) => setSkipTagged(e.target.checked)}
-                                                            className="w-4 h-4 text-blue-600 rounded"
-                                                        />
-                                                        <label htmlFor="skipTagged" className="text-sm text-gray-700">
-                                                            דלג אוטומטית על פריטים שתויגו
-                                                        </label>
-                                                    </div>
                                                 </div>
                                             </>
                                         );
@@ -1613,14 +1568,14 @@
                                     
                                     <div className="max-h-[400px] overflow-y-auto space-y-2">
                                         {getUserProgress().untagged.length > 0 ? (
-                                            getUserProgress().untagged.map(item => (
+                                            getUserProgress().untagged.map((item, idx) => (
                                                 <div 
                                                     key={item.id}
                                                     className="p-3 bg-orange-50 rounded-lg cursor-pointer hover:bg-orange-100 transition"
-                                                    onClick={() => { setCurrentIndex(item.index); setActiveTab('tagging'); }}
+                                                    onClick={() => { setUntaggedIndex(idx); setActiveTab('tagging'); }}
                                                 >
                                                     <div className="flex justify-between items-start">
-                                                        <span className="text-xs text-gray-500">#{item.index + 1}</span>
+                                                        <span className="text-xs text-gray-500">#{item.originalIndex + 1}</span>
                                                         <span className="text-xs text-orange-600">לחץ לתיוג</span>
                                                     </div>
                                                     <div className="text-sm text-gray-700 mt-1 line-clamp-2">
@@ -1652,11 +1607,10 @@
                                             getUserProgress().tagged.map(item => (
                                                 <div 
                                                     key={item.id}
-                                                    className="p-3 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100 transition"
-                                                    onClick={() => { setCurrentIndex(item.index); setActiveTab('tagging'); }}
+                                                    className="p-3 bg-green-50 rounded-lg"
                                                 >
                                                     <div className="flex justify-between items-start">
-                                                        <span className="text-xs text-gray-500">#{item.index + 1}</span>
+                                                        <span className="text-xs text-gray-500">#{item.originalIndex + 1}</span>
                                                         <span className="text-xs text-green-600">
                                                             {new Date(item.timestamp).toLocaleDateString('he-IL')}
                                                         </span>
