@@ -147,7 +147,7 @@
         ];
 
         // Admin users list - add usernames here
-        const ADMIN_USERS = ['טל', 'tal', 'Tal', 'admin'];
+        const ADMIN_USERS = ['טל', 'זיו', 'אליה', 'admin'];
 
         const PodcastTaggingApp = () => {
             const [username, setUsername] = useState('');
@@ -581,6 +581,9 @@
                     text_before: currentItem.text_before,
                     text_after: currentItem.text_after,
                     silence_duration: currentItem.silence_duration,
+                    speaker: currentItem.speaker,
+                    next_speaker: currentItem.next_speaker,
+                    podcast_id: currentItem.podcast_id,
                     tags: selectedTags,
                     timestamp: new Date().toISOString()
                 };
@@ -637,6 +640,53 @@
 
             const getUserTags = (itemId) => {
                 return allTags[itemId] || [];
+            };
+
+            // Delete a specific tag entry (admin only)
+            const deleteTagEntry = async (itemId, targetUsername) => {
+                if (!isAdmin) return;
+                if (!confirm(`האם למחוק את התיוג של ${targetUsername} לפריט ${itemId}?`)) return;
+                
+                const updatedTags = { ...allTags };
+                if (updatedTags[itemId]) {
+                    updatedTags[itemId] = updatedTags[itemId].filter(
+                        t => t.username !== targetUsername
+                    );
+                    // Remove item entry if no tags left
+                    if (updatedTags[itemId].length === 0) {
+                        delete updatedTags[itemId];
+                    }
+                }
+                
+                try {
+                    await saveTagsToStorage(updatedTags);
+                    setAllTags(updatedTags);
+                } catch (error) {
+                    console.error('Error deleting tag:', error);
+                    alert('שגיאה במחיקת התיוג');
+                }
+            };
+
+            // Get all tags as flat array for table display
+            const getAllTagsFlat = () => {
+                const flatTags = [];
+                Object.entries(allTags).forEach(([itemId, entries]) => {
+                    entries.forEach(entry => {
+                        flatTags.push({
+                            itemId: entry.itemId || itemId,
+                            username: entry.username,
+                            text_before: entry.text_before || '',
+                            text_after: entry.text_after || '',
+                            silence_duration: entry.silence_duration || 0,
+                            speaker: entry.speaker || '',
+                            next_speaker: entry.next_speaker || '',
+                            podcast_id: entry.podcast_id || '',
+                            tags: entry.tags,
+                            timestamp: entry.timestamp
+                        });
+                    });
+                });
+                return flatTags.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             };
 
             const getTagAgreement = (itemId) => {
@@ -748,6 +798,9 @@
                             text_before: entry.text_before || '',
                             text_after: entry.text_after || '',
                             silence_duration: entry.silence_duration || 0,
+                            speaker: entry.speaker || '',
+                            next_speaker: entry.next_speaker || '',
+                            podcast_id: entry.podcast_id || '',
                             tags: entry.tags,
                             timestamp: entry.timestamp
                         });
@@ -766,7 +819,7 @@
 
             // Export tags to CSV
             const exportTagsCSV = () => {
-                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'tags', 'timestamp'];
+                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'timestamp'];
                 const rows = [headers.join(',')];
                 
                 Object.entries(allTags).forEach(([itemId, entries]) => {
@@ -777,6 +830,9 @@
                             `"${(entry.text_before || '').replace(/"/g, '""')}"`,
                             `"${(entry.text_after || '').replace(/"/g, '""')}"`,
                             entry.silence_duration || 0,
+                            `"${entry.speaker || ''}"`,
+                            `"${entry.next_speaker || ''}"`,
+                            `"${(entry.podcast_id || '').replace(/"/g, '""')}"`,
                             `"${entry.tags.join('; ')}"`,
                             `"${entry.timestamp}"`
                         ];
@@ -1285,6 +1341,78 @@
                                                                     {stats.userStats[user].categories[cat]}
                                                                 </td>
                                                             ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-gray-500 py-8">
+                                            אין עדיין תיוגים
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* All Tags Table */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">כל התיוגים</h2>
+                                    {getAllTagsFlat().length > 0 ? (
+                                        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                            <table className="w-full text-right text-sm">
+                                                <thead className="sticky top-0 bg-white">
+                                                    <tr className="border-b border-gray-200">
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">מתייג</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">מזהה</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">טקסט לפני</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">טקסט אחרי</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">שתיקה</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">דובר</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">פודקאסט</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">תיוג</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">זמן</th>
+                                                        <th className="pb-3 px-2 text-gray-600 font-medium">פעולות</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {getAllTagsFlat().map((tag, idx) => (
+                                                        <tr key={`${tag.itemId}-${tag.username}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50">
+                                                            <td className="py-2 px-2 font-medium">{tag.username}</td>
+                                                            <td className="py-2 px-2 text-xs text-gray-500">{tag.itemId}</td>
+                                                            <td className="py-2 px-2 max-w-xs truncate" title={tag.text_before}>
+                                                                {tag.text_before.substring(0, 30)}...
+                                                            </td>
+                                                            <td className="py-2 px-2 max-w-xs truncate" title={tag.text_after}>
+                                                                {tag.text_after.substring(0, 30)}...
+                                                            </td>
+                                                            <td className="py-2 px-2">{tag.silence_duration.toFixed(2)}s</td>
+                                                            <td className="py-2 px-2">{tag.speaker} → {tag.next_speaker}</td>
+                                                            <td className="py-2 px-2 text-xs max-w-xs truncate" title={tag.podcast_id}>
+                                                                {tag.podcast_id.substring(0, 15)}
+                                                            </td>
+                                                            <td className="py-2 px-2">
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {tag.tags.map(t => (
+                                                                        <span key={t} className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                                                            {t}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2 px-2 text-xs text-gray-500">
+                                                                {new Date(tag.timestamp).toLocaleDateString('he-IL')}
+                                                            </td>
+                                                            <td className="py-2 px-2">
+                                                                <button
+                                                                    onClick={() => deleteTagEntry(tag.itemId, tag.username)}
+                                                                    className="p-1 text-red-500 hover:bg-red-100 rounded transition"
+                                                                    title="מחק תיוג"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                                    </svg>
+                                                                </button>
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
