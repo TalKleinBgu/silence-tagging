@@ -632,6 +632,7 @@
                         id: `item_${row.id || index}`,
                         text_before: row.text || '',
                         silence_duration: row.silence_duration_sec || 0,
+                        silence_offset_sec: row.silence_offset_sec || 0,
                         text_after: row.next_text || '',
                         audio_url: audioUrl,
                         speaker: row.speaker || '',
@@ -694,7 +695,8 @@
                             audio_url: null,
                             speaker: 'A',
                             next_speaker: 'B',
-                            podcast_id: 'יהודית כץ מוטיבציה'
+                            podcast_id: 'יהודית כץ מוטיבציה',
+                            silence_offset_sec: 45.2
                         },
                         {
                             id: 'sample_2',
@@ -704,7 +706,8 @@
                             audio_url: null,
                             speaker: 'B',
                             next_speaker: 'A',
-                            podcast_id: 'יהודית כץ מוטיבציה'
+                            podcast_id: 'יהודית כץ מוטיבציה',
+                            silence_offset_sec: 123.5
                         },
                         {
                             id: 'sample_3',
@@ -714,7 +717,8 @@
                             audio_url: null,
                             speaker: 'B',
                             next_speaker: 'A',
-                            podcast_id: 'יהודית כץ מוטיבציה'
+                            podcast_id: 'יהודית כץ מוטיבציה',
+                            silence_offset_sec: 201.8
                         }
                     ];
                     
@@ -770,6 +774,7 @@
                     text_before: currentItem.text_before,
                     text_after: currentItem.text_after,
                     silence_duration: currentItem.silence_duration,
+                    silence_offset_sec: currentItem.silence_offset_sec || 0,
                     speaker: currentItem.speaker,
                     next_speaker: currentItem.next_speaker,
                     podcast_id: currentItem.podcast_id,
@@ -989,6 +994,7 @@
                             text_before: entry.text_before || '',
                             text_after: entry.text_after || '',
                             silence_duration: entry.silence_duration || 0,
+                            silence_offset_sec: entry.silence_offset_sec || 0,
                             speaker: entry.speaker || '',
                             next_speaker: entry.next_speaker || '',
                             podcast_id: entry.podcast_id || '',
@@ -1010,7 +1016,7 @@
 
             // Export tags to CSV
             const exportTagsCSV = () => {
-                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'timestamp'];
+                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_sec', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'timestamp'];
                 const rows = [headers.join(',')];
                 
                 Object.entries(allTags).forEach(([itemId, entries]) => {
@@ -1021,6 +1027,7 @@
                             `"${(entry.text_before || '').replace(/"/g, '""')}"`,
                             `"${(entry.text_after || '').replace(/"/g, '""')}"`,
                             entry.silence_duration || 0,
+                            entry.silence_offset_sec || 0,
                             `"${entry.speaker || ''}"`,
                             `"${entry.next_speaker || ''}"`,
                             `"${(entry.podcast_id || '').replace(/"/g, '""')}"`,
@@ -1055,7 +1062,7 @@
 
             // Export dataset to CSV
             const exportDatasetCSV = () => {
-                const headers = ['id', 'text_before', 'text_after', 'silence_duration', 'speaker', 'next_speaker', 'podcast_id', 'audio_url'];
+                const headers = ['id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_sec', 'speaker', 'next_speaker', 'podcast_id', 'audio_url'];
                 const rows = [headers.join(',')];
                 
                 dataset.forEach(item => {
@@ -1064,6 +1071,7 @@
                         `"${(item.text_before || '').replace(/"/g, '""')}"`,
                         `"${(item.text_after || '').replace(/"/g, '""')}"`,
                         item.silence_duration || 0,
+                        item.silence_offset_sec || 0,
                         `"${item.speaker || ''}"`,
                         `"${item.next_speaker || ''}"`,
                         `"${(item.podcast_id || '').replace(/"/g, '""')}"`,
@@ -1094,6 +1102,7 @@
                         text_before: item.text_before || item.text || '',
                         text_after: item.text_after || item.next_text || '',
                         silence_duration: parseFloat(item.silence_duration) || parseFloat(item.silence_duration_sec) || 0,
+                        silence_offset_sec: parseFloat(item.silence_offset_sec) || 0,
                         speaker: item.speaker || '',
                         next_speaker: item.next_speaker || '',
                         podcast_id: item.podcast_id || '',
