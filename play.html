@@ -761,10 +761,11 @@
             };
 
             const toggleTag = (tag) => {
+                // Single selection only - clicking same tag deselects, clicking different selects it
                 setSelectedTags(prev => 
                     prev.includes(tag) 
-                        ? prev.filter(t => t !== tag)
-                        : [...prev, tag]
+                        ? []
+                        : [tag]
                 );
             };
 
@@ -1637,7 +1638,7 @@
                                 <div className="space-y-6">
                                     {/* Category Selection */}
                                     <div className="bg-white rounded-2xl shadow-lg p-6">
-                                        <h2 className="text-xl font-semibold mb-4 text-gray-800">בחר קטגוריות</h2>
+                                        <h2 className="text-xl font-semibold mb-4 text-gray-800">בחר קטגוריה</h2>
                                         
                                         <div className="space-y-2">
                                             {allowedCategories.map(category => (
@@ -1669,7 +1670,7 @@
                                             }`}
                                         >
                                             <SaveIcon />
-                                            <span>{editingItem ? 'עדכן תיוג' : 'שמור תגיות'}</span>
+                                            <span>{editingItem ? 'עדכן תיוג' : 'שמור תיוג'}</span>
                                         </button>
 
                                     </div>
