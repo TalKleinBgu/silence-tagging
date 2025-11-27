@@ -577,6 +577,10 @@
                 const currentItem = saveDataset[currentIndex];
                 const tagEntry = {
                     username,
+                    itemId: currentItem.id,
+                    text_before: currentItem.text_before,
+                    text_after: currentItem.text_after,
+                    silence_duration: currentItem.silence_duration,
                     tags: selectedTags,
                     timestamp: new Date().toISOString()
                 };
@@ -732,11 +736,57 @@
                 return details;
             };
 
-            // Export tags to JSON
+            // Export tags to JSON - flat format with all data
             const exportTags = () => {
-                const dataStr = JSON.stringify(allTags, null, 2);
+                // Create flat array of all tags with full data
+                const flatTags = [];
+                Object.entries(allTags).forEach(([itemId, entries]) => {
+                    entries.forEach(entry => {
+                        flatTags.push({
+                            tagger_name: entry.username,
+                            item_id: entry.itemId || itemId,
+                            text_before: entry.text_before || '',
+                            text_after: entry.text_after || '',
+                            silence_duration: entry.silence_duration || 0,
+                            tags: entry.tags,
+                            timestamp: entry.timestamp
+                        });
+                    });
+                });
+                
+                const dataStr = JSON.stringify(flatTags, null, 2);
                 const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
                 const exportFileDefaultName = 'podcast-tags.json';
+                
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', exportFileDefaultName);
+                linkElement.click();
+            };
+
+            // Export tags to CSV
+            const exportTagsCSV = () => {
+                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'tags', 'timestamp'];
+                const rows = [headers.join(',')];
+                
+                Object.entries(allTags).forEach(([itemId, entries]) => {
+                    entries.forEach(entry => {
+                        const row = [
+                            `"${entry.username}"`,
+                            `"${entry.itemId || itemId}"`,
+                            `"${(entry.text_before || '').replace(/"/g, '""')}"`,
+                            `"${(entry.text_after || '').replace(/"/g, '""')}"`,
+                            entry.silence_duration || 0,
+                            `"${entry.tags.join('; ')}"`,
+                            `"${entry.timestamp}"`
+                        ];
+                        rows.push(row.join(','));
+                    });
+                });
+                
+                const csvContent = rows.join('\n');
+                const dataUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent);
+                const exportFileDefaultName = 'podcast-tags.csv';
                 
                 const linkElement = document.createElement('a');
                 linkElement.setAttribute('href', dataUri);
@@ -911,14 +961,24 @@
                                         )}
                                     </div>
                                     {isAdmin && (
-                                        <button
-                                            onClick={exportTags}
-                                            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-                                            title="ייצא תגיות"
-                                        >
-                                            <DownloadIcon />
-                                            <span>ייצוא</span>
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={exportTags}
+                                                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                                                title="ייצא JSON"
+                                            >
+                                                <DownloadIcon />
+                                                <span>JSON</span>
+                                            </button>
+                                            <button
+                                                onClick={exportTagsCSV}
+                                                className="flex items-center gap-2 px-4 py-2 bg-green-100 hover:bg-green-200 rounded-lg transition"
+                                                title="ייצא CSV"
+                                            >
+                                                <DownloadIcon />
+                                                <span>CSV</span>
+                                            </button>
+                                        </div>
                                     )}
                                     <div className="text-left">
                                         <div className="text-sm text-gray-500">התקדמות</div>
