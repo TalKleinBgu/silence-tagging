@@ -632,7 +632,7 @@
                         id: `item_${row.id || index}`,
                         text_before: row.text || '',
                         silence_duration: row.silence_duration_sec || 0,
-                        silence_offset_sec: row.silence_offset_sec || 0,
+                        silence_offset_hms: row.silence_offset_hms || '',
                         text_after: row.next_text || '',
                         audio_url: audioUrl,
                         speaker: row.speaker || '',
@@ -696,7 +696,7 @@
                             speaker: 'A',
                             next_speaker: 'B',
                             podcast_id: 'יהודית כץ מוטיבציה',
-                            silence_offset_sec: 45.2
+                            silence_offset_hms: '00:00:45'
                         },
                         {
                             id: 'sample_2',
@@ -707,7 +707,7 @@
                             speaker: 'B',
                             next_speaker: 'A',
                             podcast_id: 'יהודית כץ מוטיבציה',
-                            silence_offset_sec: 123.5
+                            silence_offset_hms: '00:02:03'
                         },
                         {
                             id: 'sample_3',
@@ -718,7 +718,7 @@
                             speaker: 'B',
                             next_speaker: 'A',
                             podcast_id: 'יהודית כץ מוטיבציה',
-                            silence_offset_sec: 201.8
+                            silence_offset_hms: '00:03:21'
                         }
                     ];
                     
@@ -774,7 +774,7 @@
                     text_before: currentItem.text_before,
                     text_after: currentItem.text_after,
                     silence_duration: currentItem.silence_duration,
-                    silence_offset_sec: currentItem.silence_offset_sec || 0,
+                    silence_offset_hms: currentItem.silence_offset_hms || '',
                     speaker: currentItem.speaker,
                     next_speaker: currentItem.next_speaker,
                     podcast_id: currentItem.podcast_id,
@@ -994,7 +994,7 @@
                             text_before: entry.text_before || '',
                             text_after: entry.text_after || '',
                             silence_duration: entry.silence_duration || 0,
-                            silence_offset_sec: entry.silence_offset_sec || 0,
+                            silence_offset_hms: entry.silence_offset_hms || '',
                             speaker: entry.speaker || '',
                             next_speaker: entry.next_speaker || '',
                             podcast_id: entry.podcast_id || '',
@@ -1016,7 +1016,7 @@
 
             // Export tags to CSV
             const exportTagsCSV = () => {
-                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_sec', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'timestamp'];
+                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'timestamp'];
                 const rows = [headers.join(',')];
                 
                 Object.entries(allTags).forEach(([itemId, entries]) => {
@@ -1027,7 +1027,7 @@
                             `"${(entry.text_before || '').replace(/"/g, '""')}"`,
                             `"${(entry.text_after || '').replace(/"/g, '""')}"`,
                             entry.silence_duration || 0,
-                            entry.silence_offset_sec || 0,
+                            `"${entry.silence_offset_hms || ''}"`,
                             `"${entry.speaker || ''}"`,
                             `"${entry.next_speaker || ''}"`,
                             `"${(entry.podcast_id || '').replace(/"/g, '""')}"`,
@@ -1062,7 +1062,7 @@
 
             // Export dataset to CSV
             const exportDatasetCSV = () => {
-                const headers = ['id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_sec', 'speaker', 'next_speaker', 'podcast_id', 'audio_url'];
+                const headers = ['id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'audio_url'];
                 const rows = [headers.join(',')];
                 
                 dataset.forEach(item => {
@@ -1071,7 +1071,7 @@
                         `"${(item.text_before || '').replace(/"/g, '""')}"`,
                         `"${(item.text_after || '').replace(/"/g, '""')}"`,
                         item.silence_duration || 0,
-                        item.silence_offset_sec || 0,
+                        `"${item.silence_offset_hms || ''}"`,
                         `"${item.speaker || ''}"`,
                         `"${item.next_speaker || ''}"`,
                         `"${(item.podcast_id || '').replace(/"/g, '""')}"`,
@@ -1102,7 +1102,7 @@
                         text_before: item.text_before || item.text || '',
                         text_after: item.text_after || item.next_text || '',
                         silence_duration: parseFloat(item.silence_duration) || parseFloat(item.silence_duration_sec) || 0,
-                        silence_offset_sec: parseFloat(item.silence_offset_sec) || 0,
+                        silence_offset_hms: item.silence_offset_hms || '',
                         speaker: item.speaker || '',
                         next_speaker: item.next_speaker || '',
                         podcast_id: item.podcast_id || '',
@@ -1520,6 +1520,14 @@
                                     {/* Audio Player */}
                                     <div className="bg-white rounded-2xl shadow-lg p-6">
                                         <h2 className="text-xl font-semibold mb-4 text-gray-800">נגן אודיו</h2>
+                                        
+                                        {/* Silence Time Display */}
+                                        {currentUntaggedItem?.silence_offset_hms && (
+                                            <div className="mb-4 p-3 bg-purple-50 rounded-lg text-center">
+                                                <span className="text-sm text-purple-600">זמן השתיקה בפודקאסט: </span>
+                                                <span className="font-bold text-purple-800 text-lg">{currentUntaggedItem.silence_offset_hms}</span>
+                                            </div>
+                                        )}
                                         
                                         {currentUntaggedItem?.audio_url ? (
                                             <>
