@@ -181,6 +181,7 @@
             const [tagsFilterUser, setTagsFilterUser] = useState(''); // Filter by user
             const [tagsFilterCategory, setTagsFilterCategory] = useState(''); // Filter by category
             const [tagsFilterPodcast, setTagsFilterPodcast] = useState(''); // Filter by podcast
+            const [tagsFilterItemId, setTagsFilterItemId] = useState(''); // Filter by item ID
             const [tagsSearchTerm, setTagsSearchTerm] = useState(''); // Search in text
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
@@ -1935,7 +1936,7 @@
                                     <h2 className="text-xl font-semibold mb-4 text-gray-800">כל התיוגים</h2>
                                     
                                     {/* Filters */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
                                         <div>
                                             <label className="block text-xs text-gray-500 mb-1">מתייג</label>
                                             <select
@@ -1948,6 +1949,17 @@
                                                     <option key={user} value={user}>{user}</option>
                                                 ))}
                                             </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">מזהה</label>
+                                            <input
+                                                type="text"
+                                                value={tagsFilterItemId}
+                                                onChange={(e) => setTagsFilterItemId(e.target.value)}
+                                                placeholder="חפש מזהה..."
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                                dir="ltr"
+                                            />
                                         </div>
                                         <div>
                                             <label className="block text-xs text-gray-500 mb-1">קטגוריה</label>
@@ -1988,12 +2000,13 @@
                                     </div>
                                     
                                     {/* Clear Filters Button */}
-                                    {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsSearchTerm) && (
+                                    {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsFilterItemId || tagsSearchTerm) && (
                                         <button
                                             onClick={() => {
                                                 setTagsFilterUser('');
                                                 setTagsFilterCategory('');
                                                 setTagsFilterPodcast('');
+                                                setTagsFilterItemId('');
                                                 setTagsSearchTerm('');
                                             }}
                                             className="mb-3 px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm text-gray-700"
@@ -2008,6 +2021,10 @@
                                         
                                         if (tagsFilterUser) {
                                             filteredTags = filteredTags.filter(t => t.username === tagsFilterUser);
+                                        }
+                                        if (tagsFilterItemId) {
+                                            const idTerm = tagsFilterItemId.toLowerCase();
+                                            filteredTags = filteredTags.filter(t => t.itemId.toLowerCase().includes(idTerm));
                                         }
                                         if (tagsFilterCategory) {
                                             filteredTags = filteredTags.filter(t => t.tags.includes(tagsFilterCategory));
@@ -2094,7 +2111,7 @@
                                             </>
                                         ) : (
                                             <div className="text-center text-gray-500 py-8">
-                                                {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsSearchTerm) ? 'אין תיוגים מתאימים לפילטרים' : 'אין עדיין תיוגים'}
+                                                {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsFilterItemId || tagsSearchTerm) ? 'אין תיוגים מתאימים לפילטרים' : 'אין עדיין תיוגים'}
                                             </div>
                                         );
                                     })()}
