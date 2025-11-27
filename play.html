@@ -1173,6 +1173,7 @@
                     text_before: '',
                     text_after: '',
                     silence_duration: 0,
+                    silence_offset_hms: '',
                     speaker: '',
                     next_speaker: '',
                     podcast_id: '',
@@ -2457,6 +2458,7 @@
   "text_before": "טקסט לפני",
   "text_after": "טקסט אחרי",
   "silence_duration": 2.5,
+  "silence_offset_hms": "00:01:30",
   "speaker": "A",
   "podcast_id": "שם"
 }]`}</pre>
@@ -2581,6 +2583,7 @@
                                                     <th className="pb-3 px-2 text-gray-600 font-medium">טקסט לפני</th>
                                                     <th className="pb-3 px-2 text-gray-600 font-medium">טקסט אחרי</th>
                                                     <th className="pb-3 px-2 text-gray-600 font-medium">שתיקה</th>
+                                                    <th className="pb-3 px-2 text-gray-600 font-medium">זמן</th>
                                                     <th className="pb-3 px-2 text-gray-600 font-medium">דובר</th>
                                                     <th className="pb-3 px-2 text-gray-600 font-medium">פודקאסט</th>
                                                     <th className="pb-3 px-2 text-gray-600 font-medium">אודיו</th>
@@ -2622,6 +2625,15 @@
                                                                         value={editingDataValues.silence_duration}
                                                                         onChange={(e) => setEditingDataValues({...editingDataValues, silence_duration: e.target.value})}
                                                                         className="w-16 px-1 py-0.5 border rounded text-xs"
+                                                                    />
+                                                                </td>
+                                                                <td className="py-2 px-2">
+                                                                    <input
+                                                                        value={editingDataValues.silence_offset_hms || ''}
+                                                                        onChange={(e) => setEditingDataValues({...editingDataValues, silence_offset_hms: e.target.value})}
+                                                                        className="w-20 px-1 py-0.5 border rounded text-xs"
+                                                                        placeholder="00:00:00"
+                                                                        dir="ltr"
                                                                     />
                                                                 </td>
                                                                 <td className="py-2 px-2">
@@ -2685,6 +2697,7 @@
                                                                     </div>
                                                                 </td>
                                                                 <td className="py-2 px-2">{item.silence_duration?.toFixed(2)}s</td>
+                                                                <td className="py-2 px-2 text-xs" dir="ltr">{item.silence_offset_hms || '-'}</td>
                                                                 <td className="py-2 px-2">{item.speaker} → {item.next_speaker}</td>
                                                                 <td className="py-2 px-2 text-xs max-w-xs truncate">{item.podcast_id}</td>
                                                                 <td className="py-2 px-2">
