@@ -137,7 +137,7 @@
             </svg>
         );
 
-        const CATEGORIES = [
+        const DEFAULT_CATEGORIES = [
             'Embarrassment',
             'Dramatic',
             'Surprise',
@@ -176,6 +176,8 @@
             const [dataSearchTerm, setDataSearchTerm] = useState('');
             const [importJsonText, setImportJsonText] = useState('');
             const [untaggedIndex, setUntaggedIndex] = useState(0); // Index within untagged items only
+            const [categories, setCategories] = useState(DEFAULT_CATEGORIES); // Dynamic categories
+            const [newCategoryName, setNewCategoryName] = useState('');
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
 
@@ -184,11 +186,13 @@
             
             // Get allowed categories for current user
             const getAllowedCategories = () => {
-                if (isAdmin) return CATEGORIES;
+                if (isAdmin) return categories;
                 if (registeredUsers[username]) {
-                    return registeredUsers[username].categories || CATEGORIES;
+                    // Filter user's allowed categories to only include those that still exist
+                    const userCats = registeredUsers[username].categories || categories;
+                    return userCats.filter(cat => categories.includes(cat));
                 }
-                return CATEGORIES; // Default to all categories for unregistered users
+                return categories; // Default to all categories for unregistered users
             };
             
             const allowedCategories = getAllowedCategories();
@@ -285,6 +289,91 @@
                 
                 return () => usersRef.off('value', unsubscribe);
             }, []);
+
+            // Subscribe to Firebase for categories
+            useEffect(() => {
+                if (!window.firebaseEnabled || !window.database) return;
+                
+                const categoriesRef = window.database.ref('categories');
+                
+                const unsubscribe = categoriesRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data && Array.isArray(data)) {
+                        setCategories(data);
+                        localStorage.setItem('categories', JSON.stringify(data));
+                    }
+                });
+                
+                return () => categoriesRef.off('value', unsubscribe);
+            }, []);
+
+            // Load categories on startup
+            useEffect(() => {
+                const loadCategories = async () => {
+                    if (window.firebaseEnabled && window.database) {
+                        try {
+                            const snapshot = await window.database.ref('categories').once('value');
+                            const data = snapshot.val();
+                            if (data && Array.isArray(data)) {
+                                setCategories(data);
+                            } else {
+                                // Initialize with default categories if none exist
+                                await window.database.ref('categories').set(DEFAULT_CATEGORIES);
+                            }
+                        } catch (error) {
+                            console.error('Error loading categories:', error);
+                        }
+                    } else {
+                        const saved = localStorage.getItem('categories');
+                        if (saved) setCategories(JSON.parse(saved));
+                    }
+                };
+                loadCategories();
+            }, []);
+
+            // Save categories
+            const saveCategories = async (cats) => {
+                localStorage.setItem('categories', JSON.stringify(cats));
+                if (window.firebaseEnabled && window.database) {
+                    try {
+                        await window.database.ref('categories').set(cats);
+                    } catch (error) {
+                        console.error('Error saving categories:', error);
+                    }
+                }
+            };
+
+            // Add new category
+            const addCategory = async () => {
+                const trimmedName = newCategoryName.trim();
+                if (!trimmedName) return;
+                if (categories.includes(trimmedName)) {
+                    alert('קטגוריה זו כבר קיימת');
+                    return;
+                }
+                
+                const updatedCategories = [...categories, trimmedName];
+                await saveCategories(updatedCategories);
+                setCategories(updatedCategories);
+                setNewCategoryName('');
+            };
+
+            // Delete category
+            const deleteCategory = async (categoryToDelete) => {
+                if (!confirm(`האם למחוק את הקטגוריה "${categoryToDelete}"? התיוגים הקיימים לא יימחקו.`)) return;
+                
+                const updatedCategories = categories.filter(cat => cat !== categoryToDelete);
+                await saveCategories(updatedCategories);
+                setCategories(updatedCategories);
+            };
+
+            // Reset categories to default
+            const resetCategoriesToDefault = async () => {
+                if (!confirm('האם לאפס את הקטגוריות לברירת המחדל?')) return;
+                
+                await saveCategories(DEFAULT_CATEGORIES);
+                setCategories(DEFAULT_CATEGORIES);
+            };
 
             // Load registered users on startup
             useEffect(() => {
@@ -768,7 +857,7 @@
                 
                 // Category distribution
                 const categoryCount = {};
-                CATEGORIES.forEach(cat => categoryCount[cat] = 0);
+                categories.forEach(cat => categoryCount[cat] = 0);
                 
                 Object.values(allTags).forEach(itemTags => {
                     itemTags.forEach(entry => {
@@ -787,7 +876,7 @@
                         totalTagged: 0,
                         categories: {}
                     };
-                    CATEGORIES.forEach(cat => userStats[user].categories[cat] = 0);
+                    categories.forEach(cat => userStats[user].categories[cat] = 0);
                 });
 
                 Object.values(allTags).forEach(itemTags => {
@@ -1310,6 +1399,12 @@
                                             ניהול משתמשים
                                         </button>
                                         <button
+                                            onClick={() => setActiveTab('categories')}
+                                            className={`px-6 py-3 font-medium transition ${activeTab === 'categories' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            ניהול קטגוריות
+                                        </button>
+                                        <button
                                             onClick={() => setActiveTab('data')}
                                             className={`px-6 py-3 font-medium transition ${activeTab === 'data' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
                                         >
@@ -1463,9 +1558,9 @@
                                             ))}
                                         </div>
                                         
-                                        {allowedCategories.length < CATEGORIES.length && (
+                                        {allowedCategories.length < categories.length && (
                                             <div className="mt-2 text-xs text-gray-500 text-center">
-                                                יש לך גישה ל-{allowedCategories.length} קטגוריות מתוך {CATEGORIES.length}
+                                                יש לך גישה ל-{allowedCategories.length} קטגוריות מתוך {categories.length}
                                             </div>
                                         )}
 
@@ -1692,7 +1787,7 @@
                                 <div className="bg-white rounded-2xl shadow-lg p-6">
                                     <h2 className="text-xl font-semibold mb-4 text-gray-800">התפלגות קטגוריות</h2>
                                     <div className="space-y-3">
-                                        {CATEGORIES.map(category => {
+                                        {categories.map(category => {
                                             const count = stats.categoryCount[category] || 0;
                                             const maxCount = Math.max(...Object.values(stats.categoryCount), 1);
                                             const percentage = (count / maxCount) * 100;
@@ -1724,7 +1819,7 @@
                                                     <tr className="border-b border-gray-200">
                                                         <th className="pb-3 text-gray-600 font-medium">משתמש</th>
                                                         <th className="pb-3 text-gray-600 font-medium">סה"כ תיוגים</th>
-                                                        {CATEGORIES.map(cat => (
+                                                        {categories.map(cat => (
                                                             <th key={cat} className="pb-3 text-gray-600 font-medium text-sm">{cat}</th>
                                                         ))}
                                                     </tr>
@@ -1738,7 +1833,7 @@
                                                                     {stats.userStats[user].totalTagged}
                                                                 </span>
                                                             </td>
-                                                            {CATEGORIES.map(cat => (
+                                                            {categories.map(cat => (
                                                                 <td key={cat} className="py-3 text-sm text-gray-600">
                                                                     {stats.userStats[user].categories[cat]}
                                                                 </td>
@@ -1950,7 +2045,7 @@
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">קטגוריות מותרות</label>
                                             <div className="grid grid-cols-2 gap-2">
-                                                {CATEGORIES.map(category => (
+                                                {categories.map(category => (
                                                     <button
                                                         key={category}
                                                         onClick={() => toggleNewUserCategory(category)}
@@ -1965,10 +2060,10 @@
                                                 ))}
                                             </div>
                                             <button
-                                                onClick={() => setNewUserCategories(newUserCategories.length === CATEGORIES.length ? [] : [...CATEGORIES])}
+                                                onClick={() => setNewUserCategories(newUserCategories.length === categories.length ? [] : [...categories])}
                                                 className="mt-2 text-sm text-blue-600 hover:text-blue-800"
                                             >
-                                                {newUserCategories.length === CATEGORIES.length ? 'בטל הכל' : 'בחר הכל'}
+                                                {newUserCategories.length === categories.length ? 'בטל הכל' : 'בחר הכל'}
                                             </button>
                                         </div>
                                         
@@ -2045,7 +2140,7 @@
                                                     
                                                     <div className="text-sm text-gray-600 mb-2">קטגוריות:</div>
                                                     <div className="flex flex-wrap gap-1">
-                                                        {CATEGORIES.map(category => {
+                                                        {categories.map(category => {
                                                             const isAllowed = userData.categories?.includes(category);
                                                             return (
                                                                 <button
@@ -2154,6 +2249,101 @@
                                     </div>
                                     <p className="text-sm text-gray-500 mt-2">
                                         משתמשים אלו מוגדרים בקוד ותמיד יהיו מנהלים. לשינוי, יש לערוך את הקוד.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Category Management Tab - Admin only */}
+                        {activeTab === 'categories' && isAdmin && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Add New Category */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">הוסף קטגוריה חדשה</h2>
+                                    
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">שם הקטגוריה (באנגלית)</label>
+                                            <input
+                                                type="text"
+                                                value={newCategoryName}
+                                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                                onKeyPress={(e) => e.key === 'Enter' && addCategory()}
+                                                placeholder="e.g. Hesitation"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                dir="ltr"
+                                            />
+                                        </div>
+                                        
+                                        <button
+                                            onClick={addCategory}
+                                            disabled={!newCategoryName.trim()}
+                                            className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+                                        >
+                                            + הוסף קטגוריה
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="mt-6 pt-4 border-t border-gray-200">
+                                        <button
+                                            onClick={resetCategoriesToDefault}
+                                            className="w-full py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg font-medium transition"
+                                        >
+                                            🔄 אפס לברירת מחדל
+                                        </button>
+                                        <p className="text-xs text-gray-500 mt-2 text-center">
+                                            יחזיר את הקטגוריות לרשימת ברירת המחדל
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Existing Categories */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">קטגוריות קיימות ({categories.length})</h2>
+                                    
+                                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                                        {categories.map((category, index) => (
+                                            <div key={category} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-sm text-gray-400 w-6">{index + 1}.</span>
+                                                    <span className="font-medium text-gray-800">{category}</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => deleteCategory(category)}
+                                                    className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm transition"
+                                                >
+                                                    מחק
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    
+                                    {categories.length === 0 && (
+                                        <div className="text-center text-gray-500 py-8">
+                                            אין קטגוריות. הוסף קטגוריה חדשה או אפס לברירת מחדל.
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Default Categories Info */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">קטגוריות ברירת מחדל</h2>
+                                    <div className="flex flex-wrap gap-2">
+                                        {DEFAULT_CATEGORIES.map(cat => (
+                                            <span 
+                                                key={cat} 
+                                                className={`px-3 py-1 rounded-full text-sm ${
+                                                    categories.includes(cat) 
+                                                        ? 'bg-green-100 text-green-700' 
+                                                        : 'bg-gray-100 text-gray-500 line-through'
+                                                }`}
+                                            >
+                                                {cat}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <p className="text-sm text-gray-500 mt-3">
+                                        קטגוריות ירוקות פעילות כעת. קטגוריות אפורות עם קו מחיקה הוסרו מהמערכת.
                                     </p>
                                 </div>
                             </div>
