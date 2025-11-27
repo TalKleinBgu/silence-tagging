@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>כלי תיוג פודקאסטים</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; }
+        .sync-indicator { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script>
+        // Firebase Configuration - Replace with your own config!
+        // Go to: https://console.firebase.google.com/
+        // 1. Create a new project
+        // 2. Go to Project Settings > General > Your apps > Add app > Web
+        // 3. Copy the firebaseConfig object here
+        // 4. Go to Realtime Database > Create Database > Start in test mode
+        
+        const firebaseConfig = {
+        apiKey: "AIzaSyDIXMrzGcaJ1lJ2Zv3kN2h2o9IuvGfyHK8",
+        authDomain: "silence-classification.firebaseapp.com",
+        databaseURL: "https://silence-classification-default-rtdb.firebaseio.com",
+        projectId: "silence-classification",
+        storageBucket: "silence-classification.firebasestorage.app",
+        messagingSenderId: "1068855370524",
+        appId: "1:1068855370524:web:d11bd704ef15b16eb5d0d9",
+        measurementId: "G-MG35JDCFDZ"
+        };
+
+        // Initialize Firebase only if configured
+        let database = null;
+        let firebaseEnabled = false;
+        
+        if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                database = firebase.database();
+                firebaseEnabled = true;
+                console.log('Firebase initialized successfully');
+            } catch (error) {
+                console.error('Firebase initialization error:', error);
+            }
+        } else {
+            console.log('Firebase not configured - using local storage only');
+        }
+        
+        // Make available globally for React
+        window.database = database;
+        window.firebaseEnabled = firebaseEnabled;
+    </script>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Icons as simple SVG components
+        const PlayIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        );
+
+        const PauseIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+        );
+
+        const SkipForwardIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                <line x1="19" y1="5" x2="19" y2="19"></line>
+            </svg>
+        );
+
+        const SkipBackIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                <line x1="5" y1="19" x2="5" y2="5"></line>
+            </svg>
+        );
+
+        const UsersIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+        );
+
+        const SaveIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+        );
+
+        const ChartIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+        );
+
+        const DownloadIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+        );
+
+        const AlertCircleIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+        );
+
+        const CATEGORIES = [
+            'Embarrassment',
+            'Dramatic',
+            'Surprise',
+            'Excitement',
+            'Topic change',
+            'Sadness'
+        ];
+
+        const PodcastTaggingApp = () => {
+            const [username, setUsername] = useState('');
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [selectedTags, setSelectedTags] = useState([]);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [allTags, setAllTags] = useState({});
+            const [loading, setLoading] = useState(true);
+            const [dataset, setDataset] = useState([]);
+            const [error, setError] = useState(null);
+            const [activeTab, setActiveTab] = useState('tagging');
+            const [selectedUser, setSelectedUser] = useState(null);
+            const [syncStatus, setSyncStatus] = useState('local'); // 'local', 'syncing', 'synced', 'error'
+            const [lastSync, setLastSync] = useState(null);
+            const audioRef = useRef(null);
+
+            // Load dataset and tags from storage
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            // Subscribe to Firebase changes
+            useEffect(() => {
+                console.log('Firebase check - enabled:', window.firebaseEnabled, 'database:', !!window.database);
+                
+                if (!window.firebaseEnabled || !window.database) {
+                    console.log('Firebase not available, staying in local mode');
+                    return;
+                }
+                
+                console.log('Connecting to Firebase...');
+                setSyncStatus('syncing');
+                
+                const tagsRef = window.database.ref('podcast-tags');
+                
+                const unsubscribe = tagsRef.on('value', (snapshot) => {
+                    console.log('Firebase data received:', snapshot.val());
+                    const data = snapshot.val();
+                    if (data) {
+                        setAllTags(data);
+                        // Also save to localStorage as backup
+                        localStorage.setItem('podcast-tags', JSON.stringify(data));
+                    }
+                    setLastSync(new Date());
+                    setSyncStatus('synced');
+                }, (error) => {
+                    console.error('Firebase sync error:', error);
+                    setSyncStatus('error');
+                });
+                
+                return () => tagsRef.off('value', unsubscribe);
+            }, []);
+
+            // Save tags to Firebase and localStorage
+            const saveTagsToStorage = async (tags) => {
+                // Always save to localStorage
+                localStorage.setItem('podcast-tags', JSON.stringify(tags));
+                
+                // Try to save to Firebase if enabled
+                if (window.firebaseEnabled && window.database) {
+                    setSyncStatus('syncing');
+                    try {
+                        await window.database.ref('podcast-tags').set(tags);
+                        setSyncStatus('synced');
+                        setLastSync(new Date());
+                    } catch (error) {
+                        console.error('Error saving to Firebase:', error);
+                        setSyncStatus('error');
+                    }
+                }
+            };
+
+            // Load tags from Firebase or localStorage
+            const loadTagsFromStorage = async () => {
+                if (window.firebaseEnabled && window.database) {
+                    try {
+                        const snapshot = await window.database.ref('podcast-tags').once('value');
+                        const data = snapshot.val();
+                        if (data) {
+                            setSyncStatus('synced');
+                            setLastSync(new Date());
+                            return data;
+                        }
+                    } catch (error) {
+                        console.error('Error loading from Firebase:', error);
+                        setSyncStatus('error');
+                    }
+                }
+                
+                // Fallback to localStorage
+                const savedTags = localStorage.getItem('podcast-tags');
+                return savedTags ? JSON.parse(savedTags) : {};
+            };
+
+            const loadData = async () => {
+                try {
+                    setError(null);
+                    
+                    // Try HuggingFace datasets viewer API
+                    let apiUrl = 'https://datasets-server.huggingface.co/rows?dataset=Zivf/silence-hebrew-multispeaker&config=default&split=train&offset=0&length=100';
+                    
+                    console.log('Fetching from:', apiUrl);
+                    let response = await fetch(apiUrl);
+                    
+                    if (!response.ok) {
+                        // Try alternative API endpoint
+                        apiUrl = 'https://datasets-server.huggingface.co/first-rows?dataset=Zivf/silence-hebrew-multispeaker&config=default&split=train';
+                        console.log('Trying alternative endpoint:', apiUrl);
+                        response = await fetch(apiUrl);
+                    }
+                    
+                    if (!response.ok) {
+                        throw new Error(`לא ניתן לטעון דאטא מ-HuggingFace (${response.status})`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('Received data:', data);
+                    
+                    // Handle different response formats
+                    const rows = data.rows || data.features || [];
+                    
+                    if (rows.length === 0) {
+                        throw new Error('לא נמצאו שורות בדאטאסט');
+                    }
+                    
+                    // Transform the data to our format
+                    const transformedData = rows.map((item, index) => {
+                        const row = item.row || item;
+                        
+                        // Handle audio path - it's an array with src property
+                        let audioUrl = null;
+                        if (row.audio_clip_path) {
+                            if (Array.isArray(row.audio_clip_path) && row.audio_clip_path.length > 0) {
+                                // Audio is in array format with src property
+                                audioUrl = row.audio_clip_path[0].src || row.audio_clip_path[0];
+                            } else if (typeof row.audio_clip_path === 'string') {
+                                audioUrl = row.audio_clip_path;
+                            } else if (row.audio_clip_path.src) {
+                                audioUrl = row.audio_clip_path.src;
+                            } else if (row.audio_clip_path.path) {
+                                audioUrl = `https://huggingface.co/datasets/Zivf/silence-hebrew-multispeaker/resolve/main/${row.audio_clip_path.path}`;
+                            }
+                        }
+                        
+                        console.log(`Item ${index} audio URL:`, audioUrl);
+                        
+                        return {
+                            id: `item_${row.id || index}`,
+                            text_before: row.text || '',
+                            silence_duration: row.silence_duration_sec || 0,
+                            text_after: row.next_text || '',
+                            audio_url: audioUrl,
+                            speaker: row.speaker || '',
+                            next_speaker: row.next_speaker || '',
+                            podcast_id: row.podcast_id || ''
+                        };
+                    });
+                    
+                    console.log('Transformed data:', transformedData);
+                    
+                    if (transformedData.length === 0) {
+                        throw new Error('לא הצלחנו לעבד את הדאטא');
+                    }
+                    
+                    setDataset(transformedData);
+
+                    
+                    // Load existing tags from Firebase or localStorage
+                    try {
+                        const savedTags = await loadTagsFromStorage();
+                        setAllTags(savedTags);
+                    } catch (error) {
+                        console.log('No existing tags found');
+                        setAllTags({});
+                    }
+
+                    setLoading(false);
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    const errorMsg = error.message || 'שגיאה לא ידועה';
+                    setError(`בעיה בטעינת דאטא מ-HuggingFace: ${errorMsg}. משתמש בדאטא לדוגמה.`);
+                    
+                    // Use sample data as fallback
+                    const sampleData = [
+                        {
+                            id: 'sample_1',
+                            text_before: 'החרתה שאנשים מתחרטים הכי הרבה בסוף חייהם, זה אלווי והייתי נאמן או נאמנה לעצמי. דווקא בסוף החיים אנשים אומרים, הייתי עסוקה יותר מדי בלצבור שיעורות בקורות חיים, בלעשות את הדבר הנכון לפי סטנדרטים של אחרים.',
+                            silence_duration: 4.021,
+                            text_after: 'שבוע טוב וברוכים הבאים לפרק נוסף בפודקאסט גבולות היגיון אם אתם חדשים כאן אז ברוכים הבאים לפני שנתחיל יש לי בקשה קטנה.',
+                            audio_url: null,
+                            speaker: 'A',
+                            next_speaker: 'B',
+                            podcast_id: 'יהודית כץ מוטיבציה'
+                        },
+                        {
+                            id: 'sample_2',
+                            text_before: 'זה לא רלוונטי. אבל אמרת לפעול מהמקום הנכון. כן. אתה אתה רוצה אבל שנתחבר לתוכנית המקורית או שאתה רוצה אוקיי אנחנו נתחבר בינתיים.',
+                            silence_duration: 1.86,
+                            text_after: 'זה אומר. גם האם אני פועלת מתוך הערכים שלי. למשל, הרבה פעמים בטיפול, יש שיטה טיפול שנקראת אקט.',
+                            audio_url: null,
+                            speaker: 'B',
+                            next_speaker: 'A',
+                            podcast_id: 'יהודית כץ מוטיבציה'
+                        },
+                        {
+                            id: 'sample_3',
+                            text_before: 'כן, הגענו סוף סוף לנושאים של הפרק. לא, דיברת על דחיינות. ברוכה לפרק, שלום, שלומך, בוקר טוב.',
+                            silence_duration: 1.781,
+                            text_after: 'אני אוהבת את זה שאתה שואל שאלה קצרה, אבל בעצם שואל בה 50 שאלות. זה המקסים.',
+                            audio_url: null,
+                            speaker: 'B',
+                            next_speaker: 'A',
+                            podcast_id: 'יהודית כץ מוטיבציה'
+                        }
+                    ];
+                    
+                    setDataset(sampleData);
+                    setLoading(false);
+                }
+            };
+
+            const handleLogin = () => {
+                if (username.trim()) {
+                    setIsLoggedIn(true);
+                }
+            };
+
+            const toggleTag = (tag) => {
+                setSelectedTags(prev => 
+                    prev.includes(tag) 
+                        ? prev.filter(t => t !== tag)
+                        : [...prev, tag]
+                );
+            };
+
+            const saveTags = async () => {
+                if (selectedTags.length === 0) return;
+
+                const currentItem = dataset[currentIndex];
+                const tagEntry = {
+                    username,
+                    tags: selectedTags,
+                    timestamp: new Date().toISOString()
+                };
+
+                const updatedTags = { ...allTags };
+                if (!updatedTags[currentItem.id]) {
+                    updatedTags[currentItem.id] = [];
+                }
+                
+                // Remove existing tag from this user if present
+                updatedTags[currentItem.id] = updatedTags[currentItem.id].filter(
+                    t => t.username !== username
+                );
+                updatedTags[currentItem.id].push(tagEntry);
+
+                try {
+                    await saveTagsToStorage(updatedTags);
+                    setAllTags(updatedTags);
+                    
+                    // Move to next item
+                    if (currentIndex < dataset.length - 1) {
+                        setCurrentIndex(currentIndex + 1);
+                        setSelectedTags([]);
+                    }
+                } catch (error) {
+                    console.error('Error saving tags:', error);
+                    alert('שגיאה בשמירת התגיות. נסה שוב.');
+                }
+            };
+
+            const togglePlayPause = () => {
+                if (audioRef.current) {
+                    if (isPlaying) {
+                        audioRef.current.pause();
+                    } else {
+                        audioRef.current.play();
+                    }
+                    setIsPlaying(!isPlaying);
+                }
+            };
+
+            const navigateItem = (direction) => {
+                const newIndex = currentIndex + direction;
+                if (newIndex >= 0 && newIndex < dataset.length) {
+                    setCurrentIndex(newIndex);
+                    setSelectedTags([]);
+                    setIsPlaying(false);
+                    if (audioRef.current) {
+                        audioRef.current.pause();
+                    }
+                }
+            };
+
+            const getUserTags = (itemId) => {
+                return allTags[itemId] || [];
+            };
+
+            const getTagAgreement = (itemId) => {
+                const tags = getUserTags(itemId);
+                if (tags.length === 0) return {};
+                
+                const tagCounts = {};
+                tags.forEach(entry => {
+                    entry.tags.forEach(tag => {
+                        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                    });
+                });
+                
+                return tagCounts;
+            };
+
+            // Get all unique users who have tagged
+            const getAllUsers = () => {
+                const users = new Set();
+                Object.values(allTags).forEach(itemTags => {
+                    itemTags.forEach(entry => users.add(entry.username));
+                });
+                return Array.from(users);
+            };
+
+            // Get statistics
+            const getStatistics = () => {
+                const users = getAllUsers();
+                const totalItems = dataset.length;
+                const taggedItems = Object.keys(allTags).filter(id => allTags[id].length > 0).length;
+                
+                // Category distribution
+                const categoryCount = {};
+                CATEGORIES.forEach(cat => categoryCount[cat] = 0);
+                
+                Object.values(allTags).forEach(itemTags => {
+                    itemTags.forEach(entry => {
+                        entry.tags.forEach(tag => {
+                            if (categoryCount[tag] !== undefined) {
+                                categoryCount[tag]++;
+                            }
+                        });
+                    });
+                });
+
+                // User statistics
+                const userStats = {};
+                users.forEach(user => {
+                    userStats[user] = {
+                        totalTagged: 0,
+                        categories: {}
+                    };
+                    CATEGORIES.forEach(cat => userStats[user].categories[cat] = 0);
+                });
+
+                Object.values(allTags).forEach(itemTags => {
+                    itemTags.forEach(entry => {
+                        if (userStats[entry.username]) {
+                            userStats[entry.username].totalTagged++;
+                            entry.tags.forEach(tag => {
+                                if (userStats[entry.username].categories[tag] !== undefined) {
+                                    userStats[entry.username].categories[tag]++;
+                                }
+                            });
+                        }
+                    });
+                });
+
+                return {
+                    totalUsers: users.length,
+                    totalItems,
+                    taggedItems,
+                    categoryCount,
+                    userStats,
+                    users
+                };
+            };
+
+            // Get user's tagging details
+            const getUserTaggingDetails = (targetUser) => {
+                const details = [];
+                dataset.forEach((item, index) => {
+                    const itemTags = allTags[item.id] || [];
+                    const userEntry = itemTags.find(t => t.username === targetUser);
+                    if (userEntry) {
+                        details.push({
+                            index,
+                            itemId: item.id,
+                            text_before: item.text_before,
+                            text_after: item.text_after,
+                            silence_duration: item.silence_duration,
+                            tags: userEntry.tags,
+                            timestamp: userEntry.timestamp
+                        });
+                    }
+                });
+                return details;
+            };
+
+            // Export tags to JSON
+            const exportTags = () => {
+                const dataStr = JSON.stringify(allTags, null, 2);
+                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+                const exportFileDefaultName = 'podcast-tags.json';
+                
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', exportFileDefaultName);
+                linkElement.click();
+            };
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                        <div className="text-xl text-gray-600">טוען דאטא מ-HuggingFace...</div>
+                    </div>
+                );
+            }
+
+            if (!isLoggedIn) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
+                            <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">
+                                כלי תיוג פודקאסטים
+                            </h1>
+                            <p className="text-gray-600 mb-6 text-center">
+                                הזן את שמך כדי להתחיל לתייג רגעי שתיקה בפודקאסטים
+                            </p>
+                            <input
+                                type="text"
+                                placeholder="השם שלך"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button
+                                onClick={handleLogin}
+                                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+                            >
+                                התחל תיוג
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (dataset.length === 0) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
+                            <div className="text-yellow-500 mx-auto mb-4 flex justify-center">
+                                <AlertCircleIcon />
+                            </div>
+                            <p className="text-gray-700 mb-4">
+                                {error || 'לא נטען דאטא. אנא רענן את הדף או בדוק את החיבור לאינטרנט.'}
+                            </p>
+                            <button
+                                onClick={loadData}
+                                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+                            >
+                                נסה שוב
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            const currentItem = dataset[currentIndex];
+            const userTagsForItem = getUserTags(currentItem.id);
+            const tagAgreement = getTagAgreement(currentItem.id);
+            const userHasTagged = userTagsForItem.some(t => t.username === username);
+            const stats = getStatistics();
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+                    <div className="max-w-6xl mx-auto">
+                        {/* Error Warning */}
+                        {error && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                                <div className="flex items-start gap-3">
+                                    <div className="text-yellow-600 mt-0.5 flex-shrink-0">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                        </svg>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-yellow-800 font-medium">שימו לב</p>
+                                        <p className="text-yellow-700 text-sm mt-1">{error}</p>
+                                        <p className="text-yellow-700 text-sm">משתמש בדאטא לדוגמה.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Header */}
+                        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-gray-800">כלי תיוג רגעי שתיקה בפודקאסטים</h1>
+                                    <p className="text-gray-600 mt-1">משתמש: {username}</p>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    {/* Sync Status Indicator */}
+                                    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                                        syncStatus === 'synced' ? 'bg-green-100 text-green-700' :
+                                        syncStatus === 'syncing' ? 'bg-yellow-100 text-yellow-700 sync-indicator' :
+                                        syncStatus === 'error' ? 'bg-red-100 text-red-700' :
+                                        'bg-gray-100 text-gray-600'
+                                    }`}>
+                                        {syncStatus === 'synced' && (
+                                            <>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                                <span>מסונכרן</span>
+                                            </>
+                                        )}
+                                        {syncStatus === 'syncing' && (
+                                            <>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 0 1 9-9"/></svg>
+                                                <span>מסנכרן...</span>
+                                            </>
+                                        )}
+                                        {syncStatus === 'error' && (
+                                            <>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                                <span>שגיאת סנכרון</span>
+                                            </>
+                                        )}
+                                        {syncStatus === 'local' && (
+                                            <>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                                                <span>מקומי</span>
+                                            </>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={exportTags}
+                                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                                        title="ייצא תגיות"
+                                    >
+                                        <DownloadIcon />
+                                        <span>ייצוא</span>
+                                    </button>
+                                    <div className="text-left">
+                                        <div className="text-sm text-gray-500">התקדמות</div>
+                                        <div className="text-2xl font-bold text-blue-600">
+                                            {currentIndex + 1} / {dataset.length}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Tabs */}
+                            <div className="flex border-b border-gray-200">
+                                <button
+                                    onClick={() => { setActiveTab('tagging'); setSelectedUser(null); }}
+                                    className={`px-6 py-3 font-medium transition ${activeTab === 'tagging' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    תיוג
+                                </button>
+                                <button
+                                    onClick={() => { setActiveTab('stats'); setSelectedUser(null); }}
+                                    className={`px-6 py-3 font-medium transition ${activeTab === 'stats' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    סטטיסטיקות
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('users')}
+                                    className={`px-6 py-3 font-medium transition ${activeTab === 'users' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    תיוגים לפי משתמש
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Tagging Tab */}
+                        {activeTab === 'tagging' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Left Panel - Audio & Text */}
+                                <div className="lg:col-span-2 space-y-6">
+                                    {/* Audio Player */}
+                                    <div className="bg-white rounded-2xl shadow-lg p-6">
+                                        <h2 className="text-xl font-semibold mb-4 text-gray-800">נגן אודיו</h2>
+                                        
+                                        {currentItem.audio_url ? (
+                                            <>
+                                                <audio
+                                                    ref={audioRef}
+                                                    src={currentItem.audio_url}
+                                                    onEnded={() => setIsPlaying(false)}
+                                                    onError={(e) => console.error('Audio error:', e)}
+                                                    className="w-full mb-4"
+                                                    controls
+                                                />
+                                                <div className="flex items-center justify-center gap-4">
+                                                    <button
+                                                        onClick={() => navigateItem(-1)}
+                                                        disabled={currentIndex === 0}
+                                                        className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                                    >
+                                                        <SkipBackIcon />
+                                                    </button>
+                                                    <button
+                                                        onClick={togglePlayPause}
+                                                        className="p-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white transition"
+                                                    >
+                                                        {isPlaying ? <PauseIcon /> : <PlayIcon />}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => navigateItem(1)}
+                                                        disabled={currentIndex === dataset.length - 1}
+                                                        className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                                    >
+                                                        <SkipForwardIcon />
+                                                    </button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="text-center py-8 text-gray-500">
+                                                <p>אין אודיו זמין לפריט זה</p>
+                                                <div className="flex items-center justify-center gap-4 mt-4">
+                                                    <button
+                                                        onClick={() => navigateItem(-1)}
+                                                        disabled={currentIndex === 0}
+                                                        className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                                    >
+                                                        <SkipBackIcon />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => navigateItem(1)}
+                                                        disabled={currentIndex === dataset.length - 1}
+                                                        className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                                    >
+                                                        <SkipForwardIcon />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Text Display */}
+                                    <div className="bg-white rounded-2xl shadow-lg p-6">
+                                        <h2 className="text-xl font-semibold mb-4 text-gray-800">הקשר</h2>
+                                        
+                                        <div className="space-y-4">
+                                            <div className="p-4 bg-blue-50 rounded-lg">
+                                                <div className="text-sm text-gray-600 mb-1">לפני השתיקה - {currentItem.speaker}</div>
+                                                <div className="text-lg text-gray-800 font-medium">{currentItem.text_before}</div>
+                                            </div>
+
+                                            <div className="text-center py-3">
+                                                <div className="inline-block px-4 py-2 bg-yellow-100 rounded-full">
+                                                    <span className="text-sm text-gray-600">משך השתיקה: </span>
+                                                    <span className="font-bold text-gray-800">{currentItem.silence_duration.toFixed(2)}s</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-4 bg-green-50 rounded-lg">
+                                                <div className="text-sm text-gray-600 mb-1">אחרי השתיקה - {currentItem.next_speaker}</div>
+                                                <div className="text-lg text-gray-800 font-medium">{currentItem.text_after}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Right Panel - Tagging */}
+                                <div className="space-y-6">
+                                    {/* Category Selection */}
+                                    <div className="bg-white rounded-2xl shadow-lg p-6">
+                                        <h2 className="text-xl font-semibold mb-4 text-gray-800">בחר קטגוריות</h2>
+                                        
+                                        <div className="space-y-2">
+                                            {CATEGORIES.map(category => (
+                                                <button
+                                                    key={category}
+                                                    onClick={() => toggleTag(category)}
+                                                    className={`w-full p-3 rounded-lg text-right font-medium transition ${
+                                                        selectedTags.includes(category)
+                                                            ? 'bg-blue-600 text-white'
+                                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                    }`}
+                                                >
+                                                    {category}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <button
+                                            onClick={saveTags}
+                                            disabled={selectedTags.length === 0}
+                                            className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                                        >
+                                            <SaveIcon />
+                                            <span>שמור תגיות</span>
+                                        </button>
+
+                                        {userHasTagged && (
+                                            <div className="mt-3 text-sm text-green-600 text-center">
+                                                ✓ כבר תייגת את הפריט הזה
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Tag Statistics for this item */}
+                                    <div className="bg-white rounded-2xl shadow-lg p-6">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <UsersIcon />
+                                            <h2 className="text-xl font-semibold text-gray-800">
+                                                תגיות ({userTagsForItem.length} משתמשים)
+                                            </h2>
+                                        </div>
+
+                                        {userTagsForItem.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {Object.entries(tagAgreement).map(([tag, count]) => (
+                                                    <div key={tag} className="flex justify-between items-center">
+                                                        <span className="text-gray-700">{tag}</span>
+                                                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                                                            {count} / {userTagsForItem.length}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                                
+                                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                                    <div className="text-sm text-gray-600 mb-2">תויג על ידי:</div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {userTagsForItem.map(entry => (
+                                                            <span key={entry.username} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
+                                                                {entry.username}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-center text-gray-500 py-4">
+                                                אין תגיות עדיין. היה הראשון!
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Statistics Tab */}
+                        {activeTab === 'stats' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Overview Stats */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
+                                        <ChartIcon />
+                                        סיכום כללי
+                                    </h2>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-blue-50 rounded-lg p-4 text-center">
+                                            <div className="text-3xl font-bold text-blue-600">{stats.totalUsers}</div>
+                                            <div className="text-gray-600">משתמשים</div>
+                                        </div>
+                                        <div className="bg-green-50 rounded-lg p-4 text-center">
+                                            <div className="text-3xl font-bold text-green-600">{stats.taggedItems}</div>
+                                            <div className="text-gray-600">פריטים תויגו</div>
+                                        </div>
+                                        <div className="bg-purple-50 rounded-lg p-4 text-center">
+                                            <div className="text-3xl font-bold text-purple-600">{stats.totalItems}</div>
+                                            <div className="text-gray-600">סה"כ פריטים</div>
+                                        </div>
+                                        <div className="bg-orange-50 rounded-lg p-4 text-center">
+                                            <div className="text-3xl font-bold text-orange-600">
+                                                {stats.totalItems > 0 ? Math.round((stats.taggedItems / stats.totalItems) * 100) : 0}%
+                                            </div>
+                                            <div className="text-gray-600">אחוז השלמה</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Category Distribution */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">התפלגות קטגוריות</h2>
+                                    <div className="space-y-3">
+                                        {CATEGORIES.map(category => {
+                                            const count = stats.categoryCount[category] || 0;
+                                            const maxCount = Math.max(...Object.values(stats.categoryCount), 1);
+                                            const percentage = (count / maxCount) * 100;
+                                            return (
+                                                <div key={category}>
+                                                    <div className="flex justify-between text-sm mb-1">
+                                                        <span className="text-gray-700">{category}</span>
+                                                        <span className="font-medium">{count}</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                                        <div 
+                                                            className="bg-blue-600 h-2 rounded-full transition-all"
+                                                            style={{ width: `${percentage}%` }}
+                                                        ></div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* User Stats */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">סטטיסטיקות משתמשים</h2>
+                                    {stats.users.length > 0 ? (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-right">
+                                                <thead>
+                                                    <tr className="border-b border-gray-200">
+                                                        <th className="pb-3 text-gray-600 font-medium">משתמש</th>
+                                                        <th className="pb-3 text-gray-600 font-medium">סה"כ תיוגים</th>
+                                                        {CATEGORIES.map(cat => (
+                                                            <th key={cat} className="pb-3 text-gray-600 font-medium text-sm">{cat}</th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {stats.users.map(user => (
+                                                        <tr key={user} className="border-b border-gray-100 hover:bg-gray-50">
+                                                            <td className="py-3 font-medium">{user}</td>
+                                                            <td className="py-3">
+                                                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                                                                    {stats.userStats[user].totalTagged}
+                                                                </span>
+                                                            </td>
+                                                            {CATEGORIES.map(cat => (
+                                                                <td key={cat} className="py-3 text-sm text-gray-600">
+                                                                    {stats.userStats[user].categories[cat]}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-gray-500 py-8">
+                                            אין עדיין תיוגים
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Users Tab */}
+                        {activeTab === 'users' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                                {/* User List */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">משתמשים</h2>
+                                    {stats.users.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {stats.users.map(user => (
+                                                <button
+                                                    key={user}
+                                                    onClick={() => setSelectedUser(user)}
+                                                    className={`w-full p-3 rounded-lg text-right transition flex justify-between items-center ${
+                                                        selectedUser === user
+                                                            ? 'bg-blue-600 text-white'
+                                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                    }`}
+                                                >
+                                                    <span>{user}</span>
+                                                    <span className={`text-sm ${selectedUser === user ? 'text-blue-100' : 'text-gray-500'}`}>
+                                                        {stats.userStats[user].totalTagged} תיוגים
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-gray-500 py-4">
+                                            אין עדיין משתמשים
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* User Details */}
+                                <div className="lg:col-span-3 bg-white rounded-2xl shadow-lg p-6">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">
+                                        {selectedUser ? `תיוגים של ${selectedUser}` : 'בחר משתמש'}
+                                    </h2>
+                                    
+                                    {selectedUser ? (
+                                        <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                                            {getUserTaggingDetails(selectedUser).map((detail, idx) => (
+                                                <div key={idx} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <span className="text-sm text-gray-500">פריט #{detail.index + 1}</span>
+                                                        <span className="text-xs text-gray-400">
+                                                            {new Date(detail.timestamp).toLocaleString('he-IL')}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <div className="mb-3">
+                                                        <div className="text-sm text-gray-600 mb-1">לפני השתיקה:</div>
+                                                        <div className="text-gray-800 text-sm bg-blue-50 p-2 rounded">
+                                                            {detail.text_before.substring(0, 150)}...
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="text-center text-sm text-gray-500 my-2">
+                                                        שתיקה: {detail.silence_duration.toFixed(2)}s
+                                                    </div>
+                                                    
+                                                    <div className="mb-3">
+                                                        <div className="text-sm text-gray-600 mb-1">אחרי השתיקה:</div>
+                                                        <div className="text-gray-800 text-sm bg-green-50 p-2 rounded">
+                                                            {detail.text_after.substring(0, 150)}...
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {detail.tags.map(tag => (
+                                                            <span key={tag} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                    
+                                                    <button
+                                                        onClick={() => { setCurrentIndex(detail.index); setActiveTab('tagging'); }}
+                                                        className="mt-3 text-sm text-blue-600 hover:text-blue-800"
+                                                    >
+                                                        עבור לפריט זה ←
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            
+                                            {getUserTaggingDetails(selectedUser).length === 0 && (
+                                                <div className="text-center text-gray-500 py-8">
+                                                    למשתמש זה אין תיוגים עדיין
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-gray-500 py-8">
+                                            בחר משתמש מהרשימה כדי לראות את התיוגים שלו
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<PodcastTaggingApp />);
+    </script>
+</body>
+</html>
