@@ -178,6 +178,10 @@
             const [untaggedIndex, setUntaggedIndex] = useState(0); // Index within untagged items only
             const [categories, setCategories] = useState(DEFAULT_CATEGORIES); // Dynamic categories
             const [newCategoryName, setNewCategoryName] = useState('');
+            const [tagsFilterUser, setTagsFilterUser] = useState(''); // Filter by user
+            const [tagsFilterCategory, setTagsFilterCategory] = useState(''); // Filter by category
+            const [tagsFilterPodcast, setTagsFilterPodcast] = useState(''); // Filter by podcast
+            const [tagsSearchTerm, setTagsSearchTerm] = useState(''); // Search in text
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
 
@@ -874,6 +878,7 @@
                             text_before: entry.text_before || '',
                             text_after: entry.text_after || '',
                             silence_duration: entry.silence_duration || 0,
+                            silence_offset_hms: entry.silence_offset_hms || '',
                             speaker: entry.speaker || '',
                             next_speaker: entry.next_speaker || '',
                             podcast_id: entry.podcast_id || '',
@@ -1928,73 +1933,171 @@
                                 {/* All Tags Table */}
                                 <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
                                     <h2 className="text-xl font-semibold mb-4 text-gray-800">כל התיוגים</h2>
-                                    {getAllTagsFlat().length > 0 ? (
-                                        <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                                            <table className="w-full text-right text-sm">
-                                                <thead className="sticky top-0 bg-white">
-                                                    <tr className="border-b border-gray-200">
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">מתייג</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">מזהה</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">טקסט לפני</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">טקסט אחרי</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">שתיקה</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">דובר</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">פודקאסט</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">תיוג</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">זמן</th>
-                                                        <th className="pb-3 px-2 text-gray-600 font-medium">פעולות</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {getAllTagsFlat().map((tag, idx) => (
-                                                        <tr key={`${tag.itemId}-${tag.username}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50">
-                                                            <td className="py-2 px-2 font-medium">{tag.username}</td>
-                                                            <td className="py-2 px-2 text-xs text-gray-500">{tag.itemId}</td>
-                                                            <td className="py-2 px-2 max-w-xs truncate" title={tag.text_before}>
-                                                                {tag.text_before.substring(0, 30)}...
-                                                            </td>
-                                                            <td className="py-2 px-2 max-w-xs truncate" title={tag.text_after}>
-                                                                {tag.text_after.substring(0, 30)}...
-                                                            </td>
-                                                            <td className="py-2 px-2">{tag.silence_duration.toFixed(2)}s</td>
-                                                            <td className="py-2 px-2">{tag.speaker} → {tag.next_speaker}</td>
-                                                            <td className="py-2 px-2 text-xs max-w-xs truncate" title={tag.podcast_id}>
-                                                                {tag.podcast_id.substring(0, 15)}
-                                                            </td>
-                                                            <td className="py-2 px-2">
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {tag.tags.map(t => (
-                                                                        <span key={t} className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                                                                            {t}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            </td>
-                                                            <td className="py-2 px-2 text-xs text-gray-500">
-                                                                {new Date(tag.timestamp).toLocaleDateString('he-IL')}
-                                                            </td>
-                                                            <td className="py-2 px-2">
-                                                                <button
-                                                                    onClick={() => deleteTagEntry(tag.itemId, tag.username)}
-                                                                    className="p-1 text-red-500 hover:bg-red-100 rounded transition"
-                                                                    title="מחק תיוג"
-                                                                >
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                        <polyline points="3 6 5 6 21 6"></polyline>
-                                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                                    </svg>
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                    
+                                    {/* Filters */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">מתייג</label>
+                                            <select
+                                                value={tagsFilterUser}
+                                                onChange={(e) => setTagsFilterUser(e.target.value)}
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            >
+                                                <option value="">כל המתייגים</option>
+                                                {getAllUsers().map(user => (
+                                                    <option key={user} value={user}>{user}</option>
+                                                ))}
+                                            </select>
                                         </div>
-                                    ) : (
-                                        <div className="text-center text-gray-500 py-8">
-                                            אין עדיין תיוגים
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">קטגוריה</label>
+                                            <select
+                                                value={tagsFilterCategory}
+                                                onChange={(e) => setTagsFilterCategory(e.target.value)}
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            >
+                                                <option value="">כל הקטגוריות</option>
+                                                {categories.map(cat => (
+                                                    <option key={cat} value={cat}>{cat}</option>
+                                                ))}
+                                            </select>
                                         </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">פודקאסט</label>
+                                            <select
+                                                value={tagsFilterPodcast}
+                                                onChange={(e) => setTagsFilterPodcast(e.target.value)}
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            >
+                                                <option value="">כל הפודקאסטים</option>
+                                                {[...new Set(getAllTagsFlat().map(t => t.podcast_id).filter(Boolean))].map(pod => (
+                                                    <option key={pod} value={pod}>{pod}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">חיפוש טקסט</label>
+                                            <input
+                                                type="text"
+                                                value={tagsSearchTerm}
+                                                onChange={(e) => setTagsSearchTerm(e.target.value)}
+                                                placeholder="חפש..."
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Clear Filters Button */}
+                                    {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsSearchTerm) && (
+                                        <button
+                                            onClick={() => {
+                                                setTagsFilterUser('');
+                                                setTagsFilterCategory('');
+                                                setTagsFilterPodcast('');
+                                                setTagsSearchTerm('');
+                                            }}
+                                            className="mb-3 px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm text-gray-700"
+                                        >
+                                            × נקה פילטרים
+                                        </button>
                                     )}
+                                    
+                                    {(() => {
+                                        // Filter the tags
+                                        let filteredTags = getAllTagsFlat();
+                                        
+                                        if (tagsFilterUser) {
+                                            filteredTags = filteredTags.filter(t => t.username === tagsFilterUser);
+                                        }
+                                        if (tagsFilterCategory) {
+                                            filteredTags = filteredTags.filter(t => t.tags.includes(tagsFilterCategory));
+                                        }
+                                        if (tagsFilterPodcast) {
+                                            filteredTags = filteredTags.filter(t => t.podcast_id === tagsFilterPodcast);
+                                        }
+                                        if (tagsSearchTerm) {
+                                            const term = tagsSearchTerm.toLowerCase();
+                                            filteredTags = filteredTags.filter(t => 
+                                                t.text_before.toLowerCase().includes(term) ||
+                                                t.text_after.toLowerCase().includes(term)
+                                            );
+                                        }
+                                        
+                                        return filteredTags.length > 0 ? (
+                                            <>
+                                                <div className="text-sm text-gray-500 mb-2">
+                                                    מציג {filteredTags.length} תיוגים {filteredTags.length !== getAllTagsFlat().length && `(מתוך ${getAllTagsFlat().length})`}
+                                                </div>
+                                                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                                    <table className="w-full text-right text-sm">
+                                                        <thead className="sticky top-0 bg-white">
+                                                            <tr className="border-b border-gray-200">
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">מתייג</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">מזהה</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">טקסט לפני</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">טקסט אחרי</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">זמן השתיקה</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">הזמן באודיו</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">דובר</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">פודקאסט</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">תיוג</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">תאריך</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">פעולות</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {filteredTags.map((tag, idx) => (
+                                                                <tr key={`${tag.itemId}-${tag.username}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50">
+                                                                    <td className="py-2 px-2 font-medium">{tag.username}</td>
+                                                                    <td className="py-2 px-2 text-xs text-gray-500">{tag.itemId}</td>
+                                                                    <td className="py-2 px-2 max-w-xs truncate" title={tag.text_before}>
+                                                                        {tag.text_before.substring(0, 30)}...
+                                                                    </td>
+                                                                    <td className="py-2 px-2 max-w-xs truncate" title={tag.text_after}>
+                                                                        {tag.text_after.substring(0, 30)}...
+                                                                    </td>
+                                                                    <td className="py-2 px-2">{tag.silence_duration.toFixed(2)}s</td>
+                                                                    <td className="py-2 px-2 text-xs" dir="ltr">{tag.silence_offset_hms || '-'}</td>
+                                                                    <td className="py-2 px-2">{tag.speaker} → {tag.next_speaker}</td>
+                                                                    <td className="py-2 px-2 text-xs max-w-xs truncate" title={tag.podcast_id}>
+                                                                        {tag.podcast_id.substring(0, 15)}
+                                                                    </td>
+                                                                    <td className="py-2 px-2">
+                                                                        <div className="flex flex-wrap gap-1">
+                                                                            {tag.tags.map(t => (
+                                                                                <span key={t} className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                                                                    {t}
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="py-2 px-2 text-xs text-gray-500">
+                                                                        {new Date(tag.timestamp).toLocaleDateString('he-IL')}
+                                                                    </td>
+                                                                    <td className="py-2 px-2">
+                                                                        <button
+                                                                            onClick={() => deleteTagEntry(tag.itemId, tag.username)}
+                                                                            className="p-1 text-red-500 hover:bg-red-100 rounded transition"
+                                                                            title="מחק תיוג"
+                                                                        >
+                                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                                <polyline points="3 6 5 6 21 6"></polyline>
+                                                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                                            </svg>
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="text-center text-gray-500 py-8">
+                                                {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsSearchTerm) ? 'אין תיוגים מתאימים לפילטרים' : 'אין עדיין תיוגים'}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         )}
