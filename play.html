@@ -182,6 +182,8 @@
             const [tagsFilterPodcast, setTagsFilterPodcast] = useState(''); // Filter by podcast
             const [tagsFilterItemId, setTagsFilterItemId] = useState(''); // Filter by item ID
             const [tagsSearchTerm, setTagsSearchTerm] = useState(''); // Search in text
+            const [editingTagItemId, setEditingTagItemId] = useState(null); // Item being edited in My Progress
+            const [editingTagSelection, setEditingTagSelection] = useState([]); // Selected tags while editing
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
 
@@ -1775,7 +1777,7 @@
                                             getUserProgress().tagged.map(item => (
                                                 <div 
                                                     key={item.id}
-                                                    className="p-3 bg-green-50 rounded-lg"
+                                                    className={`p-3 rounded-lg ${editingTagItemId === item.id ? 'bg-blue-50 border-2 border-blue-300' : 'bg-green-50'}`}
                                                 >
                                                     <div className="flex justify-between items-start">
                                                         <span className="text-xs text-gray-500">#{item.originalIndex + 1}</span>
@@ -1786,13 +1788,88 @@
                                                     <div className="text-sm text-gray-700 mt-1 line-clamp-2">
                                                         {item.text_before.substring(0, 80)}...
                                                     </div>
-                                                    <div className="flex flex-wrap gap-1 mt-2">
-                                                        {item.userTags.map(tag => (
-                                                            <span key={tag} className="px-2 py-0.5 bg-green-200 text-green-800 rounded text-xs">
-                                                                {tag}
-                                                            </span>
-                                                        ))}
-                                                    </div>
+                                                    
+                                                    {editingTagItemId === item.id ? (
+                                                        // Edit mode
+                                                        <div className="mt-3 space-y-2">
+                                                            <div className="text-xs text-gray-600 font-medium">בחר תיוגים חדשים:</div>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {allowedCategories.map(cat => (
+                                                                    <button
+                                                                        key={cat}
+                                                                        onClick={() => setEditingTagSelection(prev => 
+                                                                            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+                                                                        )}
+                                                                        className={`px-2 py-1 rounded text-xs font-medium transition ${
+                                                                            editingTagSelection.includes(cat)
+                                                                                ? 'bg-blue-600 text-white'
+                                                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                                        }`}
+                                                                    >
+                                                                        {cat}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                            <div className="flex gap-2 mt-2">
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        if (editingTagSelection.length === 0) {
+                                                                            alert('יש לבחור לפחות תיוג אחד');
+                                                                            return;
+                                                                        }
+                                                                        const updatedTags = { ...allTags };
+                                                                        if (updatedTags[item.id]) {
+                                                                            const userEntryIndex = updatedTags[item.id].findIndex(t => t.username === username);
+                                                                            if (userEntryIndex !== -1) {
+                                                                                updatedTags[item.id][userEntryIndex].tags = editingTagSelection;
+                                                                                updatedTags[item.id][userEntryIndex].timestamp = new Date().toISOString();
+                                                                            }
+                                                                        }
+                                                                        await saveTagsToStorage(updatedTags);
+                                                                        setAllTags(updatedTags);
+                                                                        setEditingTagItemId(null);
+                                                                        setEditingTagSelection([]);
+                                                                    }}
+                                                                    className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition"
+                                                                >
+                                                                    שמור
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingTagItemId(null);
+                                                                        setEditingTagSelection([]);
+                                                                    }}
+                                                                    className="px-3 py-1 bg-gray-400 text-white rounded text-xs hover:bg-gray-500 transition"
+                                                                >
+                                                                    ביטול
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        // View mode
+                                                        <>
+                                                            <div className="flex flex-wrap gap-1 mt-2">
+                                                                {item.userTags.map(tag => (
+                                                                    <span key={tag} className="px-2 py-0.5 bg-green-200 text-green-800 rounded text-xs">
+                                                                        {tag}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingTagItemId(item.id);
+                                                                    setEditingTagSelection([...item.userTags]);
+                                                                }}
+                                                                className="mt-2 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                                            >
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                                                </svg>
+                                                                ערוך תיוג
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             ))
                                         ) : (
