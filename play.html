@@ -594,6 +594,19 @@
                 }
             };
 
+            const handleLogout = () => {
+                setIsLoggedIn(false);
+                setUsername('');
+                setSelectedTags([]);
+                setActiveTab('tagging');
+                setUntaggedIndex(0);
+                setError(null);
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                }
+                setIsPlaying(false);
+            };
+
             const toggleTag = (tag) => {
                 setSelectedTags(prev => 
                     prev.includes(tag) 
@@ -1184,9 +1197,15 @@
                             <div className="flex justify-between items-center mb-4">
                                 <div>
                                     <h1 className="text-3xl font-bold text-gray-800">כלי תיוג רגעי שתיקה בפודקאסטים</h1>
-                                    <p className="text-gray-600 mt-1">
+                                    <p className="text-gray-600 mt-1 flex items-center gap-2">
                                         משתמש: {username}
-                                        {isAdmin && <span className="mr-2 px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-sm">מנהל</span>}
+                                        {isAdmin && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-sm">מנהל</span>}
+                                        <button
+                                            onClick={handleLogout}
+                                            className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm transition"
+                                        >
+                                            התנתק
+                                        </button>
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-4">
