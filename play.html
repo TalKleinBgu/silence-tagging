@@ -182,8 +182,7 @@
             const [tagsFilterPodcast, setTagsFilterPodcast] = useState(''); // Filter by podcast
             const [tagsFilterItemId, setTagsFilterItemId] = useState(''); // Filter by item ID
             const [tagsSearchTerm, setTagsSearchTerm] = useState(''); // Search in text
-            const [editingTagItemId, setEditingTagItemId] = useState(null); // Item being edited in My Progress
-            const [editingTagSelection, setEditingTagSelection] = useState([]); // Selected tags while editing
+            const [editingItem, setEditingItem] = useState(null); // Item being edited (from My Progress)
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
 
@@ -771,45 +770,54 @@
 
             const saveTags = async () => {
                 if (selectedTags.length === 0) return;
-                if (!currentUntaggedItem) return;
+                
+                // Use editingItem if we're editing, otherwise use currentUntaggedItem
+                const itemToSave = editingItem || currentUntaggedItem;
+                if (!itemToSave) return;
 
-                const currentItem = currentUntaggedItem;
                 const tagEntry = {
                     username,
-                    itemId: currentItem.id,
-                    text_before: currentItem.text_before,
-                    text_after: currentItem.text_after,
-                    silence_duration: currentItem.silence_duration,
-                    silence_offset_hms: currentItem.silence_offset_hms || '',
-                    speaker: currentItem.speaker,
-                    next_speaker: currentItem.next_speaker,
-                    podcast_id: currentItem.podcast_id,
+                    itemId: itemToSave.id,
+                    text_before: itemToSave.text_before,
+                    text_after: itemToSave.text_after,
+                    silence_duration: itemToSave.silence_duration,
+                    silence_offset_hms: itemToSave.silence_offset_hms || '',
+                    speaker: itemToSave.speaker,
+                    next_speaker: itemToSave.next_speaker,
+                    podcast_id: itemToSave.podcast_id,
                     tags: selectedTags,
                     timestamp: new Date().toISOString()
                 };
 
                 const updatedTags = { ...allTags };
-                if (!updatedTags[currentItem.id]) {
-                    updatedTags[currentItem.id] = [];
+                if (!updatedTags[itemToSave.id]) {
+                    updatedTags[itemToSave.id] = [];
                 }
                 
                 // Remove existing tag from this user if present
-                updatedTags[currentItem.id] = updatedTags[currentItem.id].filter(
+                updatedTags[itemToSave.id] = updatedTags[itemToSave.id].filter(
                     t => t.username !== username
                 );
-                updatedTags[currentItem.id].push(tagEntry);
+                updatedTags[itemToSave.id].push(tagEntry);
 
                 try {
                     await saveTagsToStorage(updatedTags);
                     setAllTags(updatedTags);
                     
-                    // After saving, the item is now tagged, so it will be removed from untaggedItems
-                    // The untaggedIndex stays the same to show the next untagged item
-                    // If we were at the last item, go back to 0
-                    setSelectedTags([]);
-                    // Reset index if needed (will auto-adjust since untaggedItems recalculates)
-                    if (untaggedIndex >= untaggedItems.length - 1) {
-                        setUntaggedIndex(0);
+                    // Clear editing state if we were editing
+                    if (editingItem) {
+                        setEditingItem(null);
+                        setSelectedTags([]);
+                        setActiveTab('myProgress');
+                    } else {
+                        // After saving, the item is now tagged, so it will be removed from untaggedItems
+                        // The untaggedIndex stays the same to show the next untagged item
+                        // If we were at the last item, go back to 0
+                        setSelectedTags([]);
+                        // Reset index if needed (will auto-adjust since untaggedItems recalculates)
+                        if (untaggedIndex >= untaggedItems.length - 1) {
+                            setUntaggedIndex(0);
+                        }
                     }
                 } catch (error) {
                     console.error('Error saving tags:', error);
@@ -1286,6 +1294,9 @@
             const untaggedItems = getUntaggedItems();
             const currentUntaggedItem = untaggedItems[untaggedIndex];
             
+            // Current display item - use editingItem if editing, otherwise use untagged item
+            const currentDisplayItem = editingItem || currentUntaggedItem;
+            
             // Handle case where user has no assigned items
             if (displayDataset.length === 0) {
                 return (
@@ -1464,7 +1475,7 @@
 
                         {/* Tagging Tab */}
                         {activeTab === 'tagging' && (
-                            untaggedItems.length === 0 ? (
+                            (untaggedItems.length === 0 && !editingItem) ? (
                                 // All items tagged - show completion screen
                                 <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
                                     <div className="text-6xl mb-4">🎉</div>
@@ -1484,7 +1495,33 @@
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 {/* Left Panel - Audio & Text */}
                                 <div className="lg:col-span-2 space-y-6">
-                                    {/* Progress indicator */}
+                                    {/* Edit mode indicator */}
+                                    {editingItem && (
+                                        <div className="bg-orange-100 border border-orange-300 rounded-2xl shadow-lg p-4">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-600">
+                                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                                    </svg>
+                                                    <span className="font-semibold text-orange-800">מצב עריכה</span>
+                                                    <span className="text-orange-600 text-sm">עורך תיוג קיים</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingItem(null);
+                                                        setSelectedTags([]);
+                                                    }}
+                                                    className="px-3 py-1 bg-orange-200 hover:bg-orange-300 text-orange-800 rounded text-sm transition"
+                                                >
+                                                    ביטול עריכה
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Progress indicator - only show when not editing */}
+                                    {!editingItem && (
                                     <div className="bg-white rounded-2xl shadow-lg p-4">
                                         <div className="flex justify-between items-center mb-2">
                                             <span className="text-sm text-gray-600">פריט {untaggedIndex + 1} מתוך {untaggedItems.length} שנותרו</span>
@@ -1497,29 +1534,31 @@
                                             ></div>
                                         </div>
                                     </div>
+                                    )}
 
                                     {/* Audio Player */}
                                     <div className="bg-white rounded-2xl shadow-lg p-6">
                                         <h2 className="text-xl font-semibold mb-4 text-gray-800">נגן אודיו</h2>
                                         
                                         {/* Silence Time Display */}
-                                        {currentUntaggedItem?.silence_offset_hms && (
+                                        {currentDisplayItem?.silence_offset_hms && (
                                             <div className="mb-4 p-3 bg-purple-50 rounded-lg text-center">
                                                 <span className="text-sm text-purple-600">זמן השתיקה בפודקאסט: </span>
-                                                <span className="font-bold text-purple-800 text-lg">{currentUntaggedItem.silence_offset_hms}</span>
+                                                <span className="font-bold text-purple-800 text-lg">{currentDisplayItem.silence_offset_hms}</span>
                                             </div>
                                         )}
                                         
-                                        {currentUntaggedItem?.audio_url ? (
+                                        {currentDisplayItem?.audio_url ? (
                                             <>
                                                 <audio
                                                     ref={audioRef}
-                                                    src={currentUntaggedItem.audio_url}
+                                                    src={currentDisplayItem.audio_url}
                                                     onEnded={() => setIsPlaying(false)}
                                                     onError={(e) => console.error('Audio error:', e)}
                                                     className="w-full mb-4"
                                                     controls
                                                 />
+                                                {!editingItem && (
                                                 <div className="flex items-center justify-center gap-4">
                                                     <button
                                                         onClick={() => navigateUntaggedItem(-1)}
@@ -1542,10 +1581,12 @@
                                                         <SkipForwardIcon />
                                                     </button>
                                                 </div>
+                                                )}
                                             </>
                                         ) : (
                                             <div className="text-center py-8 text-gray-500">
                                                 <p>אין אודיו זמין לפריט זה</p>
+                                                {!editingItem && (
                                                 <div className="flex items-center justify-center gap-4 mt-4">
                                                     <button
                                                         onClick={() => navigateUntaggedItem(-1)}
@@ -1562,6 +1603,7 @@
                                                         <SkipForwardIcon />
                                                     </button>
                                                 </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -1572,20 +1614,20 @@
                                         
                                         <div className="space-y-4">
                                             <div className="p-4 bg-blue-50 rounded-lg">
-                                                <div className="text-sm text-gray-600 mb-1">לפני השתיקה - {currentUntaggedItem?.speaker}</div>
-                                                <div className="text-lg text-gray-800 font-medium">{currentUntaggedItem?.text_before}</div>
+                                                <div className="text-sm text-gray-600 mb-1">לפני השתיקה - {currentDisplayItem?.speaker}</div>
+                                                <div className="text-lg text-gray-800 font-medium">{currentDisplayItem?.text_before}</div>
                                             </div>
 
                                             <div className="text-center py-3">
                                                 <div className="inline-block px-4 py-2 bg-yellow-100 rounded-full">
                                                     <span className="text-sm text-gray-600">משך השתיקה: </span>
-                                                    <span className="font-bold text-gray-800">{currentUntaggedItem?.silence_duration?.toFixed(2)}s</span>
+                                                    <span className="font-bold text-gray-800">{currentDisplayItem?.silence_duration?.toFixed(2)}s</span>
                                                 </div>
                                             </div>
 
                                             <div className="p-4 bg-green-50 rounded-lg">
-                                                <div className="text-sm text-gray-600 mb-1">אחרי השתיקה - {currentUntaggedItem?.next_speaker}</div>
-                                                <div className="text-lg text-gray-800 font-medium">{currentUntaggedItem?.text_after}</div>
+                                                <div className="text-sm text-gray-600 mb-1">אחרי השתיקה - {currentDisplayItem?.next_speaker}</div>
+                                                <div className="text-lg text-gray-800 font-medium">{currentDisplayItem?.text_after}</div>
                                             </div>
                                         </div>
                                     </div>
@@ -1622,10 +1664,12 @@
                                         <button
                                             onClick={saveTags}
                                             disabled={selectedTags.length === 0}
-                                            className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                                            className={`w-full mt-4 py-3 text-white rounded-lg font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 ${
+                                                editingItem ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'
+                                            }`}
                                         >
                                             <SaveIcon />
-                                            <span>שמור תגיות</span>
+                                            <span>{editingItem ? 'עדכן תיוג' : 'שמור תגיות'}</span>
                                         </button>
 
                                     </div>
@@ -1777,7 +1821,7 @@
                                             getUserProgress().tagged.map(item => (
                                                 <div 
                                                     key={item.id}
-                                                    className={`p-3 rounded-lg ${editingTagItemId === item.id ? 'bg-blue-50 border-2 border-blue-300' : 'bg-green-50'}`}
+                                                    className="p-3 bg-green-50 rounded-lg"
                                                 >
                                                     <div className="flex justify-between items-start">
                                                         <span className="text-xs text-gray-500">#{item.originalIndex + 1}</span>
@@ -1788,88 +1832,27 @@
                                                     <div className="text-sm text-gray-700 mt-1 line-clamp-2">
                                                         {item.text_before.substring(0, 80)}...
                                                     </div>
-                                                    
-                                                    {editingTagItemId === item.id ? (
-                                                        // Edit mode
-                                                        <div className="mt-3 space-y-2">
-                                                            <div className="text-xs text-gray-600 font-medium">בחר תיוגים חדשים:</div>
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {allowedCategories.map(cat => (
-                                                                    <button
-                                                                        key={cat}
-                                                                        onClick={() => setEditingTagSelection(prev => 
-                                                                            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-                                                                        )}
-                                                                        className={`px-2 py-1 rounded text-xs font-medium transition ${
-                                                                            editingTagSelection.includes(cat)
-                                                                                ? 'bg-blue-600 text-white'
-                                                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                                                        }`}
-                                                                    >
-                                                                        {cat}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                            <div className="flex gap-2 mt-2">
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        if (editingTagSelection.length === 0) {
-                                                                            alert('יש לבחור לפחות תיוג אחד');
-                                                                            return;
-                                                                        }
-                                                                        const updatedTags = { ...allTags };
-                                                                        if (updatedTags[item.id]) {
-                                                                            const userEntryIndex = updatedTags[item.id].findIndex(t => t.username === username);
-                                                                            if (userEntryIndex !== -1) {
-                                                                                updatedTags[item.id][userEntryIndex].tags = editingTagSelection;
-                                                                                updatedTags[item.id][userEntryIndex].timestamp = new Date().toISOString();
-                                                                            }
-                                                                        }
-                                                                        await saveTagsToStorage(updatedTags);
-                                                                        setAllTags(updatedTags);
-                                                                        setEditingTagItemId(null);
-                                                                        setEditingTagSelection([]);
-                                                                    }}
-                                                                    className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition"
-                                                                >
-                                                                    שמור
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setEditingTagItemId(null);
-                                                                        setEditingTagSelection([]);
-                                                                    }}
-                                                                    className="px-3 py-1 bg-gray-400 text-white rounded text-xs hover:bg-gray-500 transition"
-                                                                >
-                                                                    ביטול
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        // View mode
-                                                        <>
-                                                            <div className="flex flex-wrap gap-1 mt-2">
-                                                                {item.userTags.map(tag => (
-                                                                    <span key={tag} className="px-2 py-0.5 bg-green-200 text-green-800 rounded text-xs">
-                                                                        {tag}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                            <button
-                                                                onClick={() => {
-                                                                    setEditingTagItemId(item.id);
-                                                                    setEditingTagSelection([...item.userTags]);
-                                                                }}
-                                                                className="mt-2 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                                            >
-                                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                                                </svg>
-                                                                ערוך תיוג
-                                                            </button>
-                                                        </>
-                                                    )}
+                                                    <div className="flex flex-wrap gap-1 mt-2">
+                                                        {item.userTags.map(tag => (
+                                                            <span key={tag} className="px-2 py-0.5 bg-green-200 text-green-800 rounded text-xs">
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingItem(item);
+                                                            setSelectedTags([...item.userTags]);
+                                                            setActiveTab('tagging');
+                                                        }}
+                                                        className="mt-2 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                                        </svg>
+                                                        ערוך תיוג
+                                                    </button>
                                                 </div>
                                             ))
                                         ) : (
