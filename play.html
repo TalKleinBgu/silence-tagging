@@ -182,6 +182,7 @@
             const [tagsFilterItemId, setTagsFilterItemId] = useState(''); // Filter by item ID
             const [tagsSearchTerm, setTagsSearchTerm] = useState(''); // Search in text
             const [editingItem, setEditingItem] = useState(null); // Item being edited (from My Progress)
+            const [listenCount, setListenCount] = useState(1); // How many times user listened to audio
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
 
@@ -223,7 +224,7 @@
                     const itemTags = allTags[item.id] || [];
                     const userTagged = itemTags.find(t => t.username === username);
                     if (userTagged) {
-                        tagged.push({ ...item, originalIndex: idx, userTags: userTagged.tags, timestamp: userTagged.timestamp });
+                        tagged.push({ ...item, originalIndex: idx, userTags: userTagged.tags, listenCount: userTagged.listen_count || 1, timestamp: userTagged.timestamp });
                     } else {
                         untagged.push({ ...item, originalIndex: idx });
                     }
@@ -786,6 +787,7 @@
                     next_speaker: itemToSave.next_speaker,
                     podcast_id: itemToSave.podcast_id,
                     tags: selectedTags,
+                    listen_count: listenCount,
                     timestamp: new Date().toISOString()
                 };
 
@@ -808,12 +810,14 @@
                     if (editingItem) {
                         setEditingItem(null);
                         setSelectedTags([]);
+                        setListenCount(1);
                         setActiveTab('myProgress');
                     } else {
                         // After saving, the item is now tagged, so it will be removed from untaggedItems
                         // The untaggedIndex stays the same to show the next untagged item
                         // If we were at the last item, go back to 0
                         setSelectedTags([]);
+                        setListenCount(1);
                         // Reset index if needed (will auto-adjust since untaggedItems recalculates)
                         if (untaggedIndex >= untaggedItems.length - 1) {
                             setUntaggedIndex(0);
@@ -893,6 +897,7 @@
                             next_speaker: entry.next_speaker || '',
                             podcast_id: entry.podcast_id || '',
                             tags: entry.tags,
+                            listen_count: entry.listen_count || 1,
                             timestamp: entry.timestamp
                         });
                     });
@@ -993,6 +998,7 @@
                             next_speaker: entry.next_speaker || '',
                             podcast_id: entry.podcast_id || '',
                             tags: entry.tags,
+                            listen_count: entry.listen_count || 1,
                             timestamp: entry.timestamp
                         });
                     });
@@ -1010,7 +1016,7 @@
 
             // Export tags to CSV
             const exportTagsCSV = () => {
-                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'timestamp'];
+                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'listen_count', 'timestamp'];
                 const rows = [headers.join(',')];
                 
                 Object.entries(allTags).forEach(([itemId, entries]) => {
@@ -1026,6 +1032,7 @@
                             `"${entry.next_speaker || ''}"`,
                             `"${(entry.podcast_id || '').replace(/"/g, '""')}"`,
                             `"${entry.tags.join('; ')}"`,
+                            entry.listen_count || 1,
                             `"${entry.timestamp}"`
                         ];
                         rows.push(row.join(','));
@@ -1661,6 +1668,26 @@
                                             </div>
                                         )}
 
+                                        {/* Listen Count */}
+                                        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                                            <div className="text-sm text-gray-600 mb-2 text-center">כמה פעמים שמעת את הקטע?</div>
+                                            <div className="flex items-center justify-center gap-3">
+                                                <button
+                                                    onClick={() => setListenCount(prev => Math.max(1, prev - 1))}
+                                                    className="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-xl transition flex items-center justify-center"
+                                                >
+                                                    -
+                                                </button>
+                                                <span className="text-2xl font-bold text-blue-600 w-12 text-center">{listenCount}</span>
+                                                <button
+                                                    onClick={() => setListenCount(prev => prev + 1)}
+                                                    className="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-xl transition flex items-center justify-center"
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+
                                         <button
                                             onClick={saveTags}
                                             disabled={selectedTags.length === 0}
@@ -1843,6 +1870,7 @@
                                                         onClick={() => {
                                                             setEditingItem(item);
                                                             setSelectedTags([...item.userTags]);
+                                                            setListenCount(item.listenCount || 1);
                                                             setActiveTab('tagging');
                                                         }}
                                                         className="mt-2 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
@@ -2089,6 +2117,7 @@
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">דובר</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">פודקאסט</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">תיוג</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">האזנות</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">תאריך</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">פעולות</th>
                                                             </tr>
@@ -2118,6 +2147,11 @@
                                                                                 </span>
                                                                             ))}
                                                                         </div>
+                                                                    </td>
+                                                                    <td className="py-2 px-2 text-center">
+                                                                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
+                                                                            {tag.listen_count || 1}
+                                                                        </span>
                                                                     </td>
                                                                     <td className="py-2 px-2 text-xs text-gray-500">
                                                                         {new Date(tag.timestamp).toLocaleDateString('he-IL')}
