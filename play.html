@@ -183,13 +183,8 @@
             const [tagsSearchTerm, setTagsSearchTerm] = useState(''); // Search in text
             const [editingItem, setEditingItem] = useState(null); // Item being edited (from My Progress)
             const [listenCount, setListenCount] = useState(1); // How many times user listened to audio
-            const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
-                // Check if user has opted out of seeing the welcome modal
-                return localStorage.getItem('hideWelcomeModal') !== 'true';
-            });
-            const [dontShowAgain, setDontShowAgain] = useState(() => {
-                return localStorage.getItem('hideWelcomeModal') === 'true';
-            });
+            const [showWelcomeModal, setShowWelcomeModal] = useState(false); // Will be shown after login
+            const [dontShowAgain, setDontShowAgain] = useState(false); // Default unchecked
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
 
@@ -776,6 +771,11 @@
                 if (isUserAdmin || isUserRegistered) {
                     setIsLoggedIn(true);
                     setError(null);
+                    
+                    // Check if user has opted out of welcome modal (per-user setting)
+                    const hideModal = localStorage.getItem(`hideWelcomeModal_${username.trim()}`) === 'true';
+                    setDontShowAgain(hideModal);
+                    setShowWelcomeModal(!hideModal);
                 } else {
                     setError('משתמש לא רשום במערכת. פנה למנהל לקבלת גישה.');
                 }
@@ -1484,9 +1484,9 @@
                                                 onChange={(e) => {
                                                     setDontShowAgain(e.target.checked);
                                                     if (e.target.checked) {
-                                                        localStorage.setItem('hideWelcomeModal', 'true');
+                                                        localStorage.setItem(`hideWelcomeModal_${username}`, 'true');
                                                     } else {
-                                                        localStorage.removeItem('hideWelcomeModal');
+                                                        localStorage.removeItem(`hideWelcomeModal_${username}`);
                                                     }
                                                 }}
                                                 className="w-4 h-4 text-blue-600 rounded"
