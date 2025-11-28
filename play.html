@@ -1081,7 +1081,9 @@
                 });
                 
                 const csvContent = rows.join('\n');
-                const dataUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent);
+                // Add BOM for Hebrew support in Excel
+                const BOM = '\uFEFF';
+                const dataUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(BOM + csvContent);
                 const exportFileDefaultName = 'podcast-tags.csv';
                 
                 const linkElement = document.createElement('a');
@@ -1123,7 +1125,9 @@
                 });
                 
                 const csvContent = rows.join('\n');
-                const dataUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent);
+                // Add BOM for Hebrew support in Excel
+                const BOM = '\uFEFF';
+                const dataUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(BOM + csvContent);
                 const linkElement = document.createElement('a');
                 linkElement.setAttribute('href', dataUri);
                 linkElement.setAttribute('download', 'dataset.csv');
