@@ -1674,16 +1674,21 @@
                                             <div className="flex items-center justify-center gap-3">
                                                 <button
                                                     onClick={() => setListenCount(prev => Math.max(1, prev - 1))}
-                                                    className="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-2xl leading-none transition flex items-center justify-center"
+                                                    className="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 transition flex items-center justify-center"
                                                 >
-                                                    −
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                                    </svg>
                                                 </button>
                                                 <span className="text-2xl font-bold text-blue-600 w-12 text-center">{listenCount}</span>
                                                 <button
                                                     onClick={() => setListenCount(prev => prev + 1)}
-                                                    className="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-2xl leading-none transition flex items-center justify-center"
+                                                    className="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 transition flex items-center justify-center"
                                                 >
-                                                    +
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                                    </svg>
                                                 </button>
                                             </div>
                                         </div>
