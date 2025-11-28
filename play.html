@@ -660,26 +660,53 @@
                 try {
                     setError(null);
                     
-                    // First, try to load from Firebase/localStorage
+                    // Always fetch fresh audio URLs from HuggingFace (they expire)
+                    // But use cached metadata if available
                     const savedDataset = await loadDatasetFromStorage();
                     
-                    if (savedDataset) {
-                        console.log('Using cached dataset');
-                        setDataset(savedDataset);
-                    } else {
-                        // If no cached data, fetch from HuggingFace
-                        console.log('No cached dataset, fetching from HuggingFace...');
-                        const transformedData = await fetchFromHuggingFace();
+                    // Always fetch from HuggingFace to get fresh audio URLs
+                    console.log('Fetching fresh audio URLs from HuggingFace...');
+                    try {
+                        const freshData = await fetchFromHuggingFace();
                         
-                        if (transformedData.length === 0) {
-                            throw new Error('לא הצלחנו לעבד את הדאטא');
+                        if (freshData.length > 0) {
+                            // If we have cached data, merge the fresh audio URLs with cached metadata
+                            if (savedDataset && savedDataset.length > 0) {
+                                // Create a map of fresh audio URLs by item id
+                                const freshAudioMap = {};
+                                freshData.forEach(item => {
+                                    freshAudioMap[item.id] = item.audio_url;
+                                });
+                                
+                                // Update cached dataset with fresh audio URLs
+                                const updatedDataset = savedDataset.map(item => ({
+                                    ...item,
+                                    audio_url: freshAudioMap[item.id] || item.audio_url
+                                }));
+                                
+                                setDataset(updatedDataset);
+                                console.log('Updated cached dataset with fresh audio URLs');
+                            } else {
+                                // No cache, use fresh data and save it
+                                setDataset(freshData);
+                                await saveDatasetToStorage(freshData);
+                                console.log('Dataset cached for future use');
+                            }
+                        } else if (savedDataset) {
+                            // HuggingFace failed but we have cache - use it (audio might not work)
+                            console.log('Using cached dataset (audio URLs may be expired)');
+                            setDataset(savedDataset);
+                        } else {
+                            throw new Error('לא הצלחנו לטעון דאטא');
                         }
-                        
-                        setDataset(transformedData);
-                        
-                        // Save to Firebase for future use
-                        await saveDatasetToStorage(transformedData);
-                        console.log('Dataset cached for future use');
+                    } catch (fetchError) {
+                        console.error('Error fetching from HuggingFace:', fetchError);
+                        if (savedDataset) {
+                            console.log('Using cached dataset as fallback');
+                            setDataset(savedDataset);
+                        } else {
+                            throw fetchError;
+                        }
                     }
                     
                     // Load existing tags from Firebase or localStorage
