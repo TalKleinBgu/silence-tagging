@@ -208,7 +208,6 @@
             const [tagsFilterItemId, setTagsFilterItemId] = useState(''); // Filter by item ID
             const [tagsSearchTerm, setTagsSearchTerm] = useState(''); // Search in text
             const [editingItem, setEditingItem] = useState(null); // Item being edited (from My Progress)
-            const [listenCount, setListenCount] = useState(1); // How many times user listened to audio
             const [playCount, setPlayCount] = useState(0); // How many times user clicked play
             const [pauseCount, setPauseCount] = useState(0); // How many times user paused audio
             const [seekForwardCount, setSeekForwardCount] = useState(0); // How many times user seeked forward
@@ -381,7 +380,7 @@
                     const itemTags = allTags[item.id] || [];
                     const userTagged = itemTags.find(t => t.username === username);
                     if (userTagged) {
-                        tagged.push({ ...item, originalIndex: idx, userTags: userTagged.tags, listenCount: userTagged.listen_count || 1, timestamp: userTagged.timestamp });
+                        tagged.push({ ...item, originalIndex: idx, userTags: userTagged.tags, timestamp: userTagged.timestamp });
                     } else {
                         untagged.push({ ...item, originalIndex: idx });
                     }
@@ -1044,7 +1043,6 @@
                     next_speaker: itemToSave.next_speaker,
                     podcast_id: itemToSave.podcast_id,
                     tags: selectedTags,
-                    listen_count: listenCount,
                     play_count: playCount,
                     pause_count: pauseCount,
                     seek_forward_count: seekForwardCount,
@@ -1072,7 +1070,6 @@
                     if (editingItem) {
                         setEditingItem(null);
                         setSelectedTags([]);
-                        setListenCount(1);
                         setPlayCount(0);
                         setPauseCount(0);
                         setSeekForwardCount(0);
@@ -1084,7 +1081,6 @@
                         // The untaggedIndex stays the same to show the next untagged item
                         // If we were at the last item, go back to 0
                         setSelectedTags([]);
-                        setListenCount(1);
                         setPlayCount(0);
                         setPauseCount(0);
                         setSeekForwardCount(0);
@@ -1272,7 +1268,6 @@
                             next_speaker: entry.next_speaker || '',
                             podcast_id: entry.podcast_id || '',
                             tags: entry.tags,
-                            listen_count: entry.listen_count || 1,
                             play_count: entry.play_count || 0,
                             pause_count: entry.pause_count || 0,
                             seek_forward_count: entry.seek_forward_count || 0,
@@ -1378,7 +1373,10 @@
                             next_speaker: entry.next_speaker || '',
                             podcast_id: entry.podcast_id || '',
                             tags: entry.tags,
-                            listen_count: entry.listen_count || 1,
+                            play_count: entry.play_count || 0,
+                            pause_count: entry.pause_count || 0,
+                            seek_forward_count: entry.seek_forward_count || 0,
+                            seek_backward_count: entry.seek_backward_count || 0,
                             audio_played: entry.audio_played || false,
                             timestamp: entry.timestamp
                         });
@@ -1397,7 +1395,7 @@
 
             // Export tags to CSV
             const exportTagsCSV = () => {
-                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'listen_count', 'audio_played', 'timestamp'];
+                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'play_count', 'pause_count', 'seek_forward_count', 'seek_backward_count', 'audio_played', 'timestamp'];
                 const rows = [headers.join(',')];
                 
                 Object.entries(allTags).forEach(([itemId, entries]) => {
@@ -1413,7 +1411,10 @@
                             `"${entry.next_speaker || ''}"`,
                             `"${(entry.podcast_id || '').replace(/"/g, '""')}"`,
                             `"${entry.tags.join('; ')}"`,
-                            entry.listen_count || 1,
+                            entry.play_count || 0,
+                            entry.pause_count || 0,
+                            entry.seek_forward_count || 0,
+                            entry.seek_backward_count || 0,
                             entry.audio_played ? 'true' : 'false',
                             `"${entry.timestamp}"`
                         ];
@@ -2531,7 +2532,6 @@
                                                         onClick={() => {
                                                             setEditingItem(item);
                                                             setSelectedTags([...item.userTags]);
-                                                            setListenCount(item.listenCount || 1);
                                                             setActiveTab('tagging');
                                                         }}
                                                         className="mt-2 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
@@ -2778,7 +2778,6 @@
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">דובר</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">פודקאסט</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">תיוג</th>
-                                                                <th className="pb-3 px-2 text-gray-600 font-medium">האזנות</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">ניגן</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">▶</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">⏸</th>
@@ -2813,11 +2812,6 @@
                                                                                 </span>
                                                                             ))}
                                                                         </div>
-                                                                    </td>
-                                                                    <td className="py-2 px-2 text-center">
-                                                                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
-                                                                            {tag.listen_count || 1}
-                                                                        </span>
                                                                     </td>
                                                                     <td className="py-2 px-2 text-center">
                                                                         {tag.audio_played ? (
