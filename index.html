@@ -1792,7 +1792,7 @@
                                                     <span className="text-xl md:text-2xl">🏷️</span>
                                                     <div>
                                                         <p className="font-medium text-gray-800 text-sm md:text-base">בחרו קטגוריה</p>
-                                                        <p className="text-xs md:text-sm text-gray-600">וציינו כמה פעמים שמעתם</p>
+                                                        <p className="text-xs md:text-sm text-gray-600">ושמרו את התיוג</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2348,31 +2348,6 @@
                                                 יש לך גישה ל-{allowedCategories.length} קטגוריות מתוך {categories.length}
                                             </div>
                                         )}
-
-                                        {/* Listen Count */}
-                                        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                                            <div className="text-sm text-gray-600 mb-2 text-center">כמה פעמים שמעת את הקטע?</div>
-                                            <div className="flex items-center justify-center gap-3">
-                                                <button
-                                                    onClick={() => setListenCount(prev => Math.max(1, prev - 1))}
-                                                    className="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 transition flex items-center justify-center"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                                                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                                                    </svg>
-                                                </button>
-                                                <span className="text-2xl font-bold text-blue-600 w-12 text-center">{listenCount}</span>
-                                                <button
-                                                    onClick={() => setListenCount(prev => prev + 1)}
-                                                    className="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 transition flex items-center justify-center"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                                                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                                                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </div>
 
                                         <button
                                             onClick={saveTags}
