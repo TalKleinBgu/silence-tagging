@@ -175,6 +175,15 @@
         // Admin users list - add usernames here
         const ADMIN_USERS = ['טל', 'זיו', 'אליה', 'admin',"רובי"];
 
+        // Helper to format time
+        const formatTime = (seconds) => {
+            if (!seconds && seconds !== 0) return '0s';
+            if (seconds < 60) return `${Number(seconds).toFixed(1)}s`;
+            const mins = Math.floor(seconds / 60);
+            const secs = (seconds % 60).toFixed(1);
+            return `${mins}m ${secs}s`;
+        };
+
         const PodcastTaggingApp = () => {
             const [username, setUsername] = useState('');
             const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -233,6 +242,17 @@
             const beforeTextRef = useRef(null); // Ref for before text container
             const afterTextRef = useRef(null); // Ref for after text container
             const lastSeekTimestampRef = useRef(0); // Track when last seek happened to ignore play/pause near it
+            const [audioHistory, setAudioHistory] = useState([]); // History of audio playback events
+
+            // Helper to format time (seconds -> mm:ss if > 60)
+            const formatTime = (seconds) => {
+                if (!seconds && seconds !== 0) return '0s';
+                const secs = Math.floor(seconds);
+                if (secs < 60) return `${secs}s`;
+                const mins = Math.floor(secs / 60);
+                const remainingSecs = secs % 60;
+                return `${mins}:${remainingSecs.toString().padStart(2, '0')}`;
+            };
 
             // Check if current user is admin
             const isAdmin = ADMIN_USERS.includes(username) || (registeredUsers[username]?.isAdmin);
@@ -1016,6 +1036,28 @@
                 setIsPlaying(false);
             };
 
+            // Load audio history when editing item
+            useEffect(() => {
+                if (editingItem) {
+                    // Find the existing tag for this item by current user
+                    const existingTags = allTags[editingItem.id] || [];
+                    const userTag = existingTags.find(t => t.username === username);
+                    if (userTag && userTag.audio_history) {
+                        setAudioHistory(userTag.audio_history);
+                    } else {
+                        setAudioHistory([]);
+                    }
+                    // Also load the counts
+                    if (userTag) {
+                        setPlayCount(userTag.play_count || 0);
+                        setPauseCount(userTag.pause_count || 0);
+                        setSeekForwardCount(userTag.seek_forward_count || 0);
+                        setSeekBackwardCount(userTag.seek_backward_count || 0);
+                        setAudioPlayed(userTag.audio_played || false);
+                    }
+                }
+            }, [editingItem]);
+
             const toggleTag = (tag) => {
                 // Single selection only - clicking same tag deselects, clicking different selects it
                 setSelectedTags(prev => 
@@ -1025,12 +1067,33 @@
                 );
             };
 
+            // Add event to audio history
+            const addAudioHistoryEvent = (eventType, fromTime = 0, toTime = null) => {
+                setAudioHistory(prev => [...prev, {
+                    type: eventType, // 'play', 'pause', 'seek_forward', 'seek_backward'
+                    timestamp: new Date().toISOString(),
+                    fromTime: fromTime,
+                    toTime: toTime
+                }]);
+            };
+
             const saveTags = async () => {
                 if (selectedTags.length === 0) return;
                 
                 // Use editingItem if we're editing, otherwise use currentUntaggedItem
                 const itemToSave = editingItem || currentUntaggedItem;
                 if (!itemToSave) return;
+
+                // Add finished event to history
+                const finalHistory = [
+                    ...audioHistory,
+                    {
+                        type: 'finished',
+                        timestamp: new Date().toISOString(),
+                        fromTime: audioRef.current ? audioRef.current.currentTime : 0,
+                        toTime: null
+                    }
+                ];
 
                 const tagEntry = {
                     username,
@@ -1048,6 +1111,7 @@
                     seek_forward_count: seekForwardCount,
                     seek_backward_count: seekBackwardCount,
                     audio_played: audioPlayed,
+                    audio_history: finalHistory,
                     timestamp: new Date().toISOString()
                 };
 
@@ -1075,6 +1139,7 @@
                         setSeekForwardCount(0);
                         setSeekBackwardCount(0);
                         setAudioPlayed(false);
+                        setAudioHistory([]);
                         setActiveTab('myProgress');
                     } else {
                         // After saving, the item is now tagged, so it will be removed from untaggedItems
@@ -1086,6 +1151,7 @@
                         setSeekForwardCount(0);
                         setSeekBackwardCount(0);
                         setAudioPlayed(false);
+                        setAudioHistory([]);
                         // Reset index if needed (will auto-adjust since untaggedItems recalculates)
                         if (untaggedIndex >= untaggedItems.length - 1) {
                             setUntaggedIndex(0);
@@ -1273,6 +1339,7 @@
                             seek_forward_count: entry.seek_forward_count || 0,
                             seek_backward_count: entry.seek_backward_count || 0,
                             audio_played: entry.audio_played || false,
+                            audio_history: entry.audio_history || [],
                             timestamp: entry.timestamp
                         });
                     });
@@ -1378,6 +1445,7 @@
                             seek_forward_count: entry.seek_forward_count || 0,
                             seek_backward_count: entry.seek_backward_count || 0,
                             audio_played: entry.audio_played || false,
+                            audio_history: entry.audio_history || [],
                             timestamp: entry.timestamp
                         });
                     });
@@ -1395,7 +1463,7 @@
 
             // Export tags to CSV
             const exportTagsCSV = () => {
-                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'play_count', 'pause_count', 'seek_forward_count', 'seek_backward_count', 'audio_played', 'timestamp'];
+                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'play_count', 'pause_count', 'seek_forward_count', 'seek_backward_count', 'audio_played', 'audio_history', 'timestamp'];
                 const rows = [headers.join(',')];
                 
                 Object.entries(allTags).forEach(([itemId, entries]) => {
@@ -1416,6 +1484,7 @@
                             entry.seek_forward_count || 0,
                             entry.seek_backward_count || 0,
                             entry.audio_played ? 'true' : 'false',
+                            `"${JSON.stringify(entry.audio_history || []).replace(/"/g, '""')}"`,
                             `"${entry.timestamp}"`
                         ];
                         rows.push(row.join(','));
@@ -2264,7 +2333,8 @@
                                                     // Only count play if not near a seek event (within 500ms)
                                                     const timeSinceSeek = Date.now() - lastSeekTimestampRef.current;
                                                     if (timeSinceSeek > 500) {
-                                                        setPlayCount(prev => prev + 1); 
+                                                        setPlayCount(prev => prev + 1);
+                                                        addAudioHistoryEvent('play', audioRef.current?.currentTime || 0);
                                                     }
                                                 }}
                                                 onPause={(e) => { 
@@ -2279,6 +2349,7 @@
                                                         // Only count if no seek happened before or after this pause
                                                         if (timeSinceSeek > 500 && !seekHappenedAfterPause && pauseTime < pauseDuration - 0.1) {
                                                             setPauseCount(prev => prev + 1);
+                                                            addAudioHistoryEvent('pause', e.target.currentTime);
                                                         }
                                                     }, 150);
                                                 }}
@@ -2296,8 +2367,10 @@
                                                     const newTime = e.target.currentTime;
                                                     if (newTime > lastSeekTime + 0.5) {
                                                         setSeekForwardCount(prev => prev + 1);
+                                                        addAudioHistoryEvent('seek_forward', lastSeekTime, newTime);
                                                     } else if (newTime < lastSeekTime - 0.5) {
                                                         setSeekBackwardCount(prev => prev + 1);
+                                                        addAudioHistoryEvent('seek_backward', lastSeekTime, newTime);
                                                     }
                                                 }}
                                                 onLoadedMetadata={(e) => setAudioDuration(e.target.duration)}
@@ -2307,8 +2380,7 @@
                                                 style={{ filter: 'invert(1) hue-rotate(180deg)' }}
                                             />
                                         ) : (
-                                            <div className="text-center py-8 text-purple-300">
-                                                <p>🎵 אין אודיו זמין לפריט זה</p>
+                                            <div className="text-center py-8 text-purple-300">                                                <p>🎵 אין אודיו זמין לפריט זה</p>
                                             </div>
                                         )}
                                     </div>
@@ -2962,6 +3034,7 @@
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">⏸</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">⏩</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">⏪</th>
+                                                                <th className="pb-3 px-2 text-gray-600 font-medium">📍 היסטוריה</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">תאריך</th>
                                                                 <th className="pb-3 px-2 text-gray-600 font-medium">פעולות</th>
                                                             </tr>
@@ -3018,6 +3091,45 @@
                                                                         <span className="px-2 py-1 bg-pink-100 text-pink-700 rounded text-xs">
                                                                             {tag.seek_backward_count || 0}
                                                                         </span>
+                                                                    </td>
+                                                                    <td className="py-2 px-2 text-xs">
+                                                                        {tag.audio_history && tag.audio_history.length > 0 ? (
+                                                                            <div className="space-y-1 max-h-24 overflow-y-auto text-gray-700 text-[10px] leading-tight">
+                                                                                {tag.audio_history.map((event, i) => {
+                                                                                    const eventNames = {
+                                                                                        'play': '▶',
+                                                                                        'pause': '⏸',
+                                                                                        'seek_forward': '⏩',
+                                                                                        'seek_backward': '⏪',
+                                                                                        'finished': '🏁'
+                                                                                    };
+                                                                                    
+                                                                                    let timeText = '';
+                                                                                    // Handle legacy format (audioTime) and new format (fromTime, toTime)
+                                                                                    const from = event.fromTime !== undefined ? parseFloat(event.fromTime) : parseFloat(event.audioTime || 0);
+                                                                                    
+                                                                                    if (event.type.includes('seek') && event.toTime !== undefined && event.toTime !== null) {
+                                                                                        const to = parseFloat(event.toTime);
+                                                                                        if (event.type === 'seek_forward') {
+                                                                                            timeText = `${formatTime(from)} ➡ ${formatTime(to)}`;
+                                                                                        } else {
+                                                                                            timeText = `${formatTime(from)} ⬅ ${formatTime(to)}`;
+                                                                                        }
+                                                                                    } else {
+                                                                                        timeText = formatTime(from);
+                                                                                    }
+
+                                                                                    return (
+                                                                                        <div key={i} className="flex items-center gap-1 whitespace-nowrap">
+                                                                                            <span className="font-bold text-blue-600 w-4">{eventNames[event.type] || event.type}</span>
+                                                                                            <span className="text-gray-500">{timeText}</span>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="text-gray-400">-</span>
+                                                                        )}
                                                                     </td>
                                                                     <td className="py-2 px-2 text-xs text-gray-500">
                                                                         {new Date(tag.timestamp).toLocaleDateString('he-IL')}
