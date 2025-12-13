@@ -187,6 +187,12 @@
         const PodcastTaggingApp = () => {
             const [username, setUsername] = useState('');
             const [isLoggedIn, setIsLoggedIn] = useState(false);
+                // Force admin homepage to statistics after login
+                useEffect(() => {
+                    if (isLoggedIn && isAdmin && activeTab !== 'stats') {
+                        setActiveTab('stats');
+                    }
+                }, [isLoggedIn, isAdmin]);
             const [currentIndex, setCurrentIndex] = useState(0);
             const [selectedTags, setSelectedTags] = useState([]);
             const [isPlaying, setIsPlaying] = useState(false);
@@ -194,7 +200,21 @@
             const [loading, setLoading] = useState(true);
             const [dataset, setDataset] = useState([]);
             const [error, setError] = useState(null);
-            const [activeTab, setActiveTab] = useState('tagging');
+            // Set default tab: 'stats' for admin, 'tagging' for others
+            const [activeTab, setActiveTab] = useState(() => {
+                // Try to get username from localStorage if not yet set
+                const storedUsername = localStorage.getItem('username') || '';
+                const adminList = ['מנהל'];
+                // If username is already set, use it, otherwise fallback to storedUsername
+                const user = username || storedUsername;
+                // Try to get registeredUsers from localStorage if not yet loaded
+                let regUsers = {};
+                try {
+                    regUsers = JSON.parse(localStorage.getItem('registered-users')) || {};
+                } catch {}
+                const isAdmin = adminList.includes(user) || (regUsers[user]?.isAdmin);
+                return isAdmin ? 'stats' : 'tagging';
+            });
             const [syncStatus, setSyncStatus] = useState('local'); // 'local', 'syncing', 'synced', 'error'
             const [lastSync, setLastSync] = useState(null);
             const [registeredUsers, setRegisteredUsers] = useState({}); // {username: {categories: [...], isAdmin: false, assignedItems: []}}
@@ -2180,19 +2200,22 @@
 
                             {/* Tabs */}
                             <div className="flex border-b border-gray-200 overflow-x-auto">
-                                <button
-                                    onClick={() => setActiveTab('tagging')}
-                                    className={`px-3 md:px-6 py-2 md:py-3 font-medium transition whitespace-nowrap text-sm md:text-base ${activeTab === 'tagging' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    תיוג
-                                </button>
-                                {/* Progress tab for all users */}
-                                <button
-                                    onClick={() => setActiveTab('myProgress')}
-                                    className={`px-3 md:px-6 py-2 md:py-3 font-medium transition whitespace-nowrap text-sm md:text-base ${activeTab === 'myProgress' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    ההתקדמות שלי
-                                </button>
+                                {!isAdmin && (
+                                    <>
+                                        <button
+                                            onClick={() => setActiveTab('tagging')}
+                                            className={`px-3 md:px-6 py-2 md:py-3 font-medium transition whitespace-nowrap text-sm md:text-base ${activeTab === 'tagging' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            תיוג
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('myProgress')}
+                                            className={`px-3 md:px-6 py-2 md:py-3 font-medium transition whitespace-nowrap text-sm md:text-base ${activeTab === 'myProgress' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            ההתקדמות שלי
+                                        </button>
+                                    </>
+                                )}
                                 {isAdmin && (
                                     <>
                                         <button
