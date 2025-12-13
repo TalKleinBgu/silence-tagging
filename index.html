@@ -868,36 +868,44 @@
 
             // Fetch dataset from HuggingFace
             const fetchFromHuggingFace = async () => {
-                let apiUrl = 'https://datasets-server.huggingface.co/rows?dataset=Zivf/NLP_The_Sound_Of_Silence_Datasets&config=default&split=train&offset=0&length=100';
-                
-                console.log('Fetching from HuggingFace:', apiUrl);
-                let response = await fetch(apiUrl);
-                
-                if (!response.ok) {
-                    // Try alternative API endpoint
-                    apiUrl = 'https://datasets-server.huggingface.co/first-rows?dataset=Zivf/NLP_The_Sound_Of_Silence_Datasets&config=default&split=train';
-                    console.log('Trying alternative endpoint:', apiUrl);
-                    response = await fetch(apiUrl);
+                // Fetch all records in batches
+                const batchSize = 100;
+                let offset = 0;
+                let allRows = [];
+                let batchNum = 0;
+                while (true) {
+                    let apiUrl = `https://datasets-server.huggingface.co/rows?dataset=Zivf/NLP_The_Sound_Of_Silence_Datasets&config=default&split=train&offset=${offset}&length=${batchSize}`;
+                    console.log('Fetching from HuggingFace:', apiUrl);
+                    let response = await fetch(apiUrl);
+                    if (!response.ok) {
+                        // Try alternative API endpoint (only for first batch)
+                        if (offset === 0) {
+                            apiUrl = 'https://datasets-server.huggingface.co/first-rows?dataset=Zivf/NLP_The_Sound_Of_Silence_Datasets&config=default&split=train';
+                            console.log('Trying alternative endpoint:', apiUrl);
+                            response = await fetch(apiUrl);
+                        }
+                    }
+                    if (!response.ok) {
+                        throw new Error(`לא ניתן לטעון דאטא מ-HuggingFace (${response.status})`);
+                    }
+                    const data = await response.json();
+                    const rows = data.rows || data.features || [];
+                    if (rows.length === 0) {
+                        break;
+                    }
+                    allRows = allRows.concat(rows);
+                    if (rows.length < batchSize) {
+                        break;
+                    }
+                    offset += batchSize;
+                    batchNum++;
                 }
-                
-                if (!response.ok) {
-                    throw new Error(`לא ניתן לטעון דאטא מ-HuggingFace (${response.status})`);
-                }
-                
-                const data = await response.json();
-                console.log('Received data from HuggingFace:', data);
-                
-                // Handle different response formats
-                const rows = data.rows || data.features || [];
-                
-                if (rows.length === 0) {
+                if (allRows.length === 0) {
                     throw new Error('לא נמצאו שורות בדאטאסט');
                 }
-                
                 // Transform the data to our format
-                const transformedData = rows.map((item, index) => {
+                const transformedData = allRows.map((item, index) => {
                     const row = item.row || item;
-                    
                     // Handle audio path - it's an array with src property
                     let audioUrl = null;
                     if (row.audio_clip_path) {
@@ -911,7 +919,6 @@
                             audioUrl = `https://huggingface.co/datasets/Zivf/NLP_The_Sound_Of_Silence_Datasets/resolve/main/${row.audio_clip_path.path}`;
                         }
                     }
-                    
                     return {
                         id: `item_${row.id || index}`,
                         text_before: row.text || '',
