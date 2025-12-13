@@ -173,7 +173,7 @@
         };
 
         // Admin users list - add usernames here
-        const ADMIN_USERS = ['טל', 'זיו', 'אליה', 'admin',"רובי"];
+        const ADMIN_USERS = ['מנהל'];
 
         // Helper to format time
         const formatTime = (seconds) => {
@@ -201,11 +201,7 @@
             const [newUserName, setNewUserName] = useState('');
             const [newUserCategories, setNewUserCategories] = useState([]);
             const [newUserIsAdmin, setNewUserIsAdmin] = useState(false);
-            const [newUserItemsStart, setNewUserItemsStart] = useState('');
-            const [newUserItemsEnd, setNewUserItemsEnd] = useState('');
-            const [newUserPodcasts, setNewUserPodcasts] = useState([]); // Podcasts for new user
             const [editingUserItems, setEditingUserItems] = useState(null); // username being edited
-            const [editingUserPodcasts, setEditingUserPodcasts] = useState(null); // username being edited for podcasts
             const [editingDataItem, setEditingDataItem] = useState(null); // data item being edited
             const [editingDataValues, setEditingDataValues] = useState({}); // values being edited
             const [dataSearchTerm, setDataSearchTerm] = useState('');
@@ -234,6 +230,7 @@
             const [recognizedText, setRecognizedText] = useState(''); // Text recognized by speech API
             const [wordTimestamps, setWordTimestamps] = useState(null); // AssemblyAI word timestamps
             const [isTranscribing, setIsTranscribing] = useState(false); // Transcription in progress
+            const [batchTranscribing, setBatchTranscribing] = useState(false); // Batch transcription in progress
             const [transcriptionError, setTranscriptionError] = useState(null); // Transcription error
             const [transcriptionStats, setTranscriptionStats] = useState({ total: 0, withTranscription: 0 }); // Stats for admin panel
             const [hoveredCategory, setHoveredCategory] = useState(null); // Category being hovered for tooltip
@@ -245,8 +242,10 @@
             const afterTextRef = useRef(null); // Ref for after text container
             const lastSeekTimestampRef = useRef(0); // Track when last seek happened to ignore play/pause near it
             const [audioHistory, setAudioHistory] = useState([]); // History of audio playback events
-
-            // Helper to format time (seconds -> mm:ss if > 60)
+            const [selectedUsersForDistribution, setSelectedUsersForDistribution] = useState([]);
+            const [distributionInProgress, setDistributionInProgress] = useState(false);
+            const [commonPercentage, setCommonPercentage] = useState(20); // ברירת מחדל 20% 
+        //            // Helper to format time (seconds -> mm:ss if > 60)
             const formatTime = (seconds) => {
                 if (!seconds && seconds !== 0) return '0s';
                 const secs = Math.floor(seconds);
@@ -625,6 +624,136 @@
                 setNewCategoryName('');
             };
 
+            // Distribute items with percentage-based allocation
+         // Distribute items with percentage-based allocation
+            const distributeItemsStratified = async () => {
+                if (selectedUsersForDistribution.length < 1) {
+                    alert('יש לבחור לפחות משתמש אחד לחלוקה');
+                    return;
+                }
+                
+                // Calculate how many items each user should get based on the COMMON percentage
+                const userItemCounts = {};
+                selectedUsersForDistribution.forEach(user => {
+                    // כאן השינוי: שימוש באחוז המשותף לכולם
+                    userItemCounts[user] = Math.round(dataset.length * (commonPercentage / 100));
+                });
+                
+                // Calculate total assignments and verify coverage
+                const totalAssignments = Object.values(userItemCounts).reduce((a, b) => a + b, 0);
+                const targetCoverage = dataset.length * 2; // Target: Double coverage
+                
+                // יצירת הודעת סיכום לפני אישור
+                const itemsPerUser = Math.round(dataset.length * (commonPercentage / 100));
+                
+                let confirmMsg = `הגדרת חלוקה:\n`;
+                confirmMsg += `מספר משתמשים: ${selectedUsersForDistribution.length}\n`;
+                confirmMsg += `אחוז לכל משתמש: ${commonPercentage}%\n`;
+                confirmMsg += `כמות פריטים למשתמש: ~${itemsPerUser}\n\n`;
+                confirmMsg += `סה"כ תיוגים שיווצרו: ${totalAssignments}\n`;
+                
+                if (totalAssignments < targetCoverage) {
+                    confirmMsg += `⚠️ שים לב: זה פחות מ-${targetCoverage} (הדרוש לכיסוי כפול מלא).\n`;
+                } else {
+                    confirmMsg += `✅ מספיק לכיסוי כפול של כל הדאטא.\n`;
+                }
+                
+                confirmMsg += `\nהאם לבצע את החלוקה (Stratified)?`;
+
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                
+                setDistributionInProgress(true);
+                
+                try {
+                    // Group items by group_9_label for stratification
+                    const labelGroups = {};
+                    dataset.forEach((item, index) => {
+                        const label = item.group_9_label || 'unknown';
+                        if (!labelGroups[label]) {
+                            labelGroups[label] = [];
+                        }
+                        labelGroups[label].push(index);
+                    });
+                    
+                    // Initialize assignments
+                    const itemAssignments = {}; // {itemIndex: [user1, user2]}
+                    dataset.forEach((_, idx) => itemAssignments[idx] = []);
+                    
+                    const userAssignments = {};
+                    selectedUsersForDistribution.forEach(user => {
+                        userAssignments[user] = [];
+                    });
+                    
+                    // For each label group, assign each item to exactly 2 users (stratified)
+                    Object.entries(labelGroups).forEach(([label, indices]) => {
+                        // Shuffle items and users for randomness
+                        const shuffledItems = [...indices].sort(() => Math.random() - 0.5);
+                        let userOrder = [...selectedUsersForDistribution];
+                        let userPtr = 0;
+                        let userPtr2 = 1;
+                        // For each item in this label group
+                        shuffledItems.forEach(itemIdx => {
+                            // If we run out of users, reshuffle order
+                            if (userPtr >= userOrder.length) {
+                                userOrder = [...userOrder].sort(() => Math.random() - 0.5);
+                                userPtr = 0;
+                                userPtr2 = 1;
+                            }
+                            // Assign to two different users
+                            const userA = userOrder[userPtr % userOrder.length];
+                            const userB = userOrder[userPtr2 % userOrder.length];
+                            // Assign item to both users
+                            if (!userAssignments[userA].includes(itemIdx)) {
+                                userAssignments[userA].push(itemIdx);
+                                itemAssignments[itemIdx].push(userA);
+                            }
+                            if (!userAssignments[userB].includes(itemIdx)) {
+                                userAssignments[userB].push(itemIdx);
+                                itemAssignments[itemIdx].push(userB);
+                            }
+                            userPtr = (userPtr + 1) % userOrder.length;
+                            userPtr2 = (userPtr2 + 1) % userOrder.length;
+                            if (userPtr2 === userPtr) userPtr2 = (userPtr2 + 1) % userOrder.length;
+                        });
+                    });
+                    
+                    // Fill remaining quota if stratification caused rounding errors (Optional cleanup)
+                    // ... (Keeping logic simple for now based on your request) ...
+                    
+                    // Sort each user's items
+                    Object.keys(userAssignments).forEach(user => {
+                        userAssignments[user].sort((a, b) => a - b);
+                    });
+                    
+                    // Update all users with their assignments
+                    const updatedUsers = { ...registeredUsers };
+                    selectedUsersForDistribution.forEach(user => {
+                        if (updatedUsers[user]) {
+                            updatedUsers[user] = {
+                                ...updatedUsers[user],
+                                assignedItems: userAssignments[user],
+                                assignedPodcasts: []
+                            };
+                        }
+                    });
+                    
+                    await saveRegisteredUsers(updatedUsers);
+                    setRegisteredUsers(updatedUsers);
+                    setSelectedUsersForDistribution([]);
+                    
+                    alert('✅ החלוקה בוצעה בהצלחה!');
+                    
+                } catch (error) {
+                    console.error('Error distributing items:', error);
+                    alert('שגיאה בחלוקת הפריטים');
+                }
+                
+                setDistributionInProgress(false);
+            };        
+
+
             // Delete category
             const deleteCategory = async (categoryToDelete) => {
                 if (!confirm(`האם למחוק את הקטגוריה "${categoryToDelete}"? התיוגים הקיימים לא יימחקו.`)) return;
@@ -674,6 +803,7 @@
             };
 
             // Add new user
+            // Add new user
             const addUser = async () => {
                 if (!newUserName.trim()) return;
                 if (newUserCategories.length === 0) {
@@ -681,23 +811,13 @@
                     return;
                 }
                 
-                // Parse item range
-                let assignedItems = [];
-                const start = parseInt(newUserItemsStart);
-                const end = parseInt(newUserItemsEnd);
-                if (!isNaN(start) && !isNaN(end) && start >= 1 && end >= start) {
-                    for (let i = start - 1; i < end && i < dataset.length; i++) {
-                        assignedItems.push(i);
-                    }
-                }
-                
                 const updatedUsers = {
                     ...registeredUsers,
                     [newUserName.trim()]: {
                         categories: newUserCategories,
                         isAdmin: newUserIsAdmin,
-                        assignedItems: assignedItems,
-                        assignedPodcasts: newUserPodcasts,
+                        assignedItems: [], // No manual assignment
+                        assignedPodcasts: [], // No manual assignment
                         createdAt: new Date().toISOString()
                     }
                 };
@@ -707,10 +827,8 @@
                 setNewUserName('');
                 setNewUserCategories([]);
                 setNewUserIsAdmin(false);
-                setNewUserItemsStart('');
-                setNewUserItemsEnd('');
-                setNewUserPodcasts([]);
             };
+
 
             // Delete user
             const deleteUser = async (userToDelete) => {
@@ -736,45 +854,9 @@
                 await saveRegisteredUsers(updatedUsers);
                 setRegisteredUsers(updatedUsers);
             };
+                
 
-            // Update user assigned items
-            const updateUserItems = async (userToUpdate, startItem, endItem) => {
-                let assignedItems = [];
-                const start = parseInt(startItem);
-                const end = parseInt(endItem);
-                if (!isNaN(start) && !isNaN(end) && start >= 1 && end >= start) {
-                    for (let i = start - 1; i < end && i < dataset.length; i++) {
-                        assignedItems.push(i);
-                    }
-                }
-                
-                const updatedUsers = {
-                    ...registeredUsers,
-                    [userToUpdate]: {
-                        ...registeredUsers[userToUpdate],
-                        assignedItems: assignedItems
-                    }
-                };
-                
-                await saveRegisteredUsers(updatedUsers);
-                setRegisteredUsers(updatedUsers);
-                setEditingUserItems(null);
-            };
 
-            // Update user assigned podcasts
-            const updateUserPodcasts = async (userToUpdate, podcasts) => {
-                const updatedUsers = {
-                    ...registeredUsers,
-                    [userToUpdate]: {
-                        ...registeredUsers[userToUpdate],
-                        assignedPodcasts: podcasts
-                    }
-                };
-                
-                await saveRegisteredUsers(updatedUsers);
-                setRegisteredUsers(updatedUsers);
-                setEditingUserPodcasts(null);
-            };
 
             // Toggle new user category
             const toggleNewUserCategory = (category) => {
@@ -908,19 +990,19 @@
                     const row = item.row || item;
                     // Handle audio path - it's an array with src property
                     let audioUrl = null;
-                    if (row.audio_clip_path) {
-                        if (Array.isArray(row.audio_clip_path) && row.audio_clip_path.length > 0) {
-                            audioUrl = row.audio_clip_path[0].src || row.audio_clip_path[0];
-                        } else if (typeof row.audio_clip_path === 'string') {
-                            audioUrl = row.audio_clip_path;
-                        } else if (row.audio_clip_path.src) {
-                            audioUrl = row.audio_clip_path.src;
-                        } else if (row.audio_clip_path.path) {
-                            audioUrl = `https://huggingface.co/datasets/Zivf/NLP_The_Sound_Of_Silence_Datasets/resolve/main/${row.audio_clip_path.path}`;
+                    if (row.audio_path_abs) {
+                        if (Array.isArray(row.audio_path_abs) && row.audio_path_abs.length > 0) {
+                            audioUrl = row.audio_path_abs[0].src || row.audio_path_abs[0];
+                        } else if (typeof row.audio_path_abs === 'string') {
+                            audioUrl = row.audio_path_abs;
+                        } else if (row.audio_path_abs.src) {
+                            audioUrl = row.audio_path_abs.src;
+                        } else if (row.audio_path_abs.path) {
+                            audioUrl = `https://huggingface.co/datasets/Zivf/NLP_The_Sound_Of_Silence_Datasets/resolve/main/${row.audio_path_abs.path}`;
                         }
                     }
                     return {
-                        id: `item_${row.id || index}`,
+                        id: `${row.podcast_id || ''}_${row.id || index}`,
                         text_before: row.text || '',
                         silence_duration: row.silence_duration_sec || 0,
                         silence_offset_hms: row.silence_offset_hms || '',
@@ -928,7 +1010,8 @@
                         audio_url: audioUrl,
                         speaker: row.speaker || '',
                         next_speaker: row.next_speaker || '',
-                        podcast_id: row.podcast_id || ''
+                        podcast_id: row.podcast_id || '',
+                        group_9_label: row.group_9_label_norm || 'unknown'  
                     };
                 });
                 
@@ -1234,15 +1317,21 @@
                 // If we have AssemblyAI timestamps, use them for precise sync
                 if (wordTimestamps && wordTimestamps.words && wordTimestamps.words.length > 0) {
                     const words = wordTimestamps.words;
-                    
-                    // Get silence offset time in ms
+                    // Use the same silence split logic as the tagging tab
                     const silenceOffsetMs = parseTimeToMs(currentDisplayItem.silence_offset_hms);
-                    const silenceEndMs = silenceOffsetMs + (silenceDuration * 1000);
-                    
-                    // Split words into before and after silence
-                    const wordsBeforeSilence = words.filter(w => w.end <= silenceOffsetMs);
-                    const wordsAfterSilence = words.filter(w => w.start >= silenceEndMs);
-                    
+                    const silenceDurationMs = (currentDisplayItem.silence_duration ? Number(currentDisplayItem.silence_duration) : 0) * 1000;
+                    const afterSilenceMs = silenceOffsetMs + silenceDurationMs;
+                    const nextWordIdx = words.findIndex(w => w.start >= afterSilenceMs);
+                    let silenceRangeStartMs, silenceRangeEndMs;
+                    if (nextWordIdx !== -1) {
+                        silenceRangeEndMs = words[nextWordIdx].start;
+                        silenceRangeStartMs = silenceRangeEndMs - silenceDurationMs;
+                    } else {
+                        silenceRangeStartMs = silenceOffsetMs;
+                        silenceRangeEndMs = afterSilenceMs;
+                    }
+                    const wordsBeforeSilence = words.filter(w => w.start < silenceRangeStartMs);
+                    const wordsAfterSilence = words.filter(w => w.start >= silenceRangeEndMs);
                     // Find the current word based on timestamp
                     let currentWordIdx = -1;
                     let foundWord = null;
@@ -1259,22 +1348,19 @@
                             break;
                         }
                     }
-                    
                     // Determine section and relative word index
-                    if (currentTimeMs < silenceOffsetMs) {
+                    if (currentTimeMs < silenceRangeStartMs) {
                         // Before silence
                         newSection = 'before';
-                        // Find index within before section
                         const beforeIdx = wordsBeforeSilence.findIndex(w => w === foundWord);
                         newWordIndex = beforeIdx >= 0 ? beforeIdx : (foundWord ? wordsBeforeSilence.length - 1 : -1);
-                    } else if (currentTimeMs >= silenceOffsetMs && currentTimeMs <= silenceEndMs) {
+                    } else if (currentTimeMs >= silenceRangeStartMs && currentTimeMs < silenceRangeEndMs) {
                         // During silence
                         newSection = 'silence';
                         newWordIndex = -1;
                     } else {
                         // After silence
                         newSection = 'after';
-                        // Find index within after section
                         const afterIdx = wordsAfterSilence.findIndex(w => w === foundWord);
                         newWordIndex = afterIdx >= 0 ? afterIdx : (wordsAfterSilence.length > 0 ? 0 : -1);
                     }
@@ -1605,7 +1691,8 @@
                         speaker: item.speaker || '',
                         next_speaker: item.next_speaker || '',
                         podcast_id: item.podcast_id || '',
-                        audio_url: item.audio_url || item.audio_clip_path || null
+                        audio_url: item.audio_path_abs || item.audio_url || null
+                        // audio_url is not stored, only audio_path_abs
                     }));
                     
                     setDataset(validatedData);
@@ -2232,16 +2319,29 @@
                                                 {(() => {
                                                     // Use AssemblyAI words if available, otherwise fall back to text_before
                                                     if (wordTimestamps && wordTimestamps.words && wordTimestamps.words.length > 0) {
+                                                        // Use exact ms for silence offset and duration
                                                         const silenceOffsetMs = parseTimeToMs(currentDisplayItem?.silence_offset_hms);
-                                                        const wordsBeforeSilence = wordTimestamps.words.filter(w => w.end <= silenceOffsetMs);
-                                                        
+                                                        const silenceDurationMs = (currentDisplayItem?.silence_duration ? Number(currentDisplayItem.silence_duration) : 0) * 1000;
+                                                        const silenceStartMs = silenceOffsetMs;
+                                                        // New split logic: silence is from the start of the first word after (silenceOffsetMs+silenceDurationMs) minus silenceDurationMs, to its start
+                                                        const afterSilenceMs = silenceOffsetMs + silenceDurationMs;
+                                                        const nextWordIdx = wordTimestamps.words.findIndex(w => w.start >= afterSilenceMs);
+                                                        let silenceRangeStartMs, silenceRangeEndMs;
+                                                        if (nextWordIdx !== -1) {
+                                                            silenceRangeEndMs = wordTimestamps.words[nextWordIdx].start;
+                                                            silenceRangeStartMs = silenceRangeEndMs - silenceDurationMs;
+                                                        } else {
+                                                            silenceRangeStartMs = silenceOffsetMs;
+                                                            silenceRangeEndMs = afterSilenceMs;
+                                                        }
+                                                        const wordsBeforeSilence = wordTimestamps.words.filter(w => w.start < silenceRangeStartMs);
+                                                        const wordsAfterSilence = wordTimestamps.words.filter(w => w.start >= silenceRangeEndMs);
+
                                                         if (wordsBeforeSilence.length === 0) return currentDisplayItem?.text_before || 'אין טקסט';
-                                                        
                                                         return wordsBeforeSilence.map((wordObj, idx) => {
                                                             const isHighlighted = currentSection === 'before' && idx === highlightedWordIndex && isPlaying;
                                                             const isPast = currentSection === 'before' && idx < highlightedWordIndex && isPlaying;
                                                             const isAfterSection = currentSection === 'after' || currentSection === 'silence';
-                                                            
                                                             return (
                                                                 <span
                                                                     key={idx}
@@ -2815,7 +2915,7 @@
                                         });
                                         const sortedPodcasts = Object.entries(podcastCounts)
                                             .sort((a, b) => b[1] - a[1])
-                                            .slice(0, 8);
+                                            
                                         
                                         return (
                                             <div className="space-y-3 max-h-64 overflow-y-auto">
@@ -2845,6 +2945,11 @@
                                         );
                                     })()}
                                 </div>
+
+
+
+                                {/* Shared Items Table for User Pairs - moved to end, improved style */}
+
 
                                 {/* Silence Duration Distribution */}
                                 <div className="bg-white rounded-2xl shadow-lg p-6">
@@ -2909,7 +3014,7 @@
                                         });
                                         const sortedUsers = Object.entries(userTagCounts)
                                             .sort((a, b) => b[1] - a[1])
-                                            .slice(0, 5);
+                                            .slice(0, 20);
                                         const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
                                         
                                         return sortedUsers.length > 0 ? (
@@ -3239,12 +3344,8 @@
                                                                         </td>
                                                                         {categories.map((cat2, idx2) => {
                                                                             const val = agreement.confusionMatrix[cat1][cat2];
-                                                                            const isDiagonal = idx1 === idx2;
-                                                                            const bgClass = isDiagonal 
-                                                                                ? (val > 0 ? 'bg-green-200' : 'bg-green-50')
-                                                                                : (val > 0 ? 'bg-red-100' : 'bg-white');
                                                                             return (
-                                                                                <td key={cat2} className={`p-1 border border-gray-300 text-center ${bgClass}`}>
+                                                                                <td key={cat2} className="p-1 border border-gray-300 text-center">
                                                                                     {val > 0 ? val : ''}
                                                                                 </td>
                                                                             );
@@ -3576,7 +3677,9 @@
 
                         {/* User Management Tab - Admin only */}
                         {activeTab === 'manage' && isAdmin && (
+                            <React.Fragment>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            
                                 {/* Add New User */}
                                 <div className="bg-white rounded-2xl shadow-lg p-6">
                                     <h2 className="text-xl font-semibold mb-4 text-gray-800">הוסף משתמש חדש</h2>
@@ -3629,72 +3732,8 @@
                                             <label htmlFor="newUserAdmin" className="text-sm text-gray-700">מנהל</label>
                                         </div>
                                         
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">פריטים לתיוג (מספרים)</label>
-                                            <div className="flex gap-2 items-center">
-                                                <input
-                                                    type="number"
-                                                    min="1"
-                                                    max={dataset.length}
-                                                    value={newUserItemsStart}
-                                                    onChange={(e) => setNewUserItemsStart(e.target.value)}
-                                                    placeholder="מ-"
-                                                    className="w-20 px-2 py-1 border border-gray-300 rounded text-center"
-                                                />
-                                                <span className="text-gray-500">עד</span>
-                                                <input
-                                                    type="number"
-                                                    min="1"
-                                                    max={dataset.length}
-                                                    value={newUserItemsEnd}
-                                                    onChange={(e) => setNewUserItemsEnd(e.target.value)}
-                                                    placeholder="עד-"
-                                                    className="w-20 px-2 py-1 border border-gray-300 rounded text-center"
-                                                />
-                                                <span className="text-xs text-gray-500">(מתוך {dataset.length})</span>
-                                            </div>
-                                            <p className="text-xs text-gray-500 mt-1">השאר ריק לגישה לכל הפריטים</p>
-                                        </div>
 
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">פודקאסטים לתיוג (בנוסף)</label>
-                                            <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
-                                                {uniquePodcasts.map(podcast => (
-                                                    <div key={podcast} className="flex items-center gap-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            id={`new-podcast-${podcast}`}
-                                                            checked={newUserPodcasts.includes(podcast)}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) {
-                                                                    setNewUserPodcasts([...newUserPodcasts, podcast]);
-                                                                } else {
-                                                                    setNewUserPodcasts(newUserPodcasts.filter(p => p !== podcast));
-                                                                }
-                                                            }}
-                                                            className="w-4 h-4 text-blue-600 rounded"
-                                                        />
-                                                        <label htmlFor={`new-podcast-${podcast}`} className="text-sm text-gray-700 truncate" title={podcast}>
-                                                            {podcast}
-                                                        </label>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div className="flex justify-between mt-1">
-                                                <button
-                                                    onClick={() => setNewUserPodcasts([...uniquePodcasts])}
-                                                    className="text-xs text-blue-600 hover:text-blue-800"
-                                                >
-                                                    בחר הכל
-                                                </button>
-                                                <button
-                                                    onClick={() => setNewUserPodcasts([])}
-                                                    className="text-xs text-blue-600 hover:text-blue-800"
-                                                >
-                                                    נקה הכל
-                                                </button>
-                                            </div>
-                                        </div>
+              
                                         
                                         <button
                                             onClick={addUser}
@@ -3755,128 +3794,20 @@
                                                             );
                                                         })}
                                                     </div>
-                                                    
                                                     <div className="mt-3 pt-3 border-t border-gray-100">
                                                         <div className="text-sm text-gray-600 mb-2">פריטים מוקצים:</div>
-                                                        {editingUserItems === userName ? (
-                                                            <div className="flex gap-2 items-center">
-                                                                <input
-                                                                    type="number"
-                                                                    min="1"
-                                                                    max={dataset.length}
-                                                                    defaultValue={userData.assignedItems?.length > 0 ? Math.min(...userData.assignedItems) + 1 : ''}
-                                                                    id={`edit-start-${userName}`}
-                                                                    placeholder="מ-"
-                                                                    className="w-16 px-2 py-1 border border-gray-300 rounded text-center text-sm"
-                                                                />
-                                                                <span className="text-gray-500 text-sm">-</span>
-                                                                <input
-                                                                    type="number"
-                                                                    min="1"
-                                                                    max={dataset.length}
-                                                                    defaultValue={userData.assignedItems?.length > 0 ? Math.max(...userData.assignedItems) + 1 : ''}
-                                                                    id={`edit-end-${userName}`}
-                                                                    placeholder="עד-"
-                                                                    className="w-16 px-2 py-1 border border-gray-300 rounded text-center text-sm"
-                                                                />
-                                                                <button
-                                                                    onClick={() => {
-                                                                        const start = document.getElementById(`edit-start-${userName}`).value;
-                                                                        const end = document.getElementById(`edit-end-${userName}`).value;
-                                                                        updateUserItems(userName, start, end);
-                                                                    }}
-                                                                    className="px-2 py-1 bg-green-500 text-white rounded text-xs"
-                                                                >
-                                                                    שמור
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => setEditingUserItems(null)}
-                                                                    className="px-2 py-1 bg-gray-300 text-gray-700 rounded text-xs"
-                                                                >
-                                                                    ביטול
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-sm text-gray-700">
-                                                                    {userData.assignedItems?.length > 0 
-                                                                        ? `${Math.min(...userData.assignedItems) + 1} - ${Math.max(...userData.assignedItems) + 1} (${userData.assignedItems.length} פריטים)`
-                                                                        : 'כל הפריטים'}
+                                                        <div className="text-sm text-gray-700">
+                                                            {userData.assignedItems?.length > 0 ? (
+                                                                <span className="font-medium text-blue-600">
+                                                                    {userData.assignedItems.length} פריטים
                                                                 </span>
-                                                                <button
-                                                                    onClick={() => setEditingUserItems(userName)}
-                                                                    className="text-blue-600 hover:text-blue-800 text-xs"
-                                                                >
-                                                                    ערוך
-                                                                </button>
-                                                            </div>
-                                                        )}
+                                                            ) : (
+                                                                <span className="text-gray-400">טרם חולק</span>
+                                                            )}
+                                                        </div>
                                                     </div>
 
-                                                    <div className="mt-3 pt-3 border-t border-gray-100">
-                                                        <div className="text-sm text-gray-600 mb-2">פודקאסטים מוקצים:</div>
-                                                        {editingUserPodcasts === userName ? (
-                                                            <div className="space-y-2">
-                                                                <div className="max-h-32 overflow-y-auto border border-gray-200 rounded p-2 space-y-1">
-                                                                    {uniquePodcasts.map(podcast => {
-                                                                        const isAssigned = userData.assignedPodcasts?.includes(podcast);
-                                                                        return (
-                                                                            <div key={podcast} className="flex items-center gap-2">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    id={`edit-podcast-${userName}-${podcast}`}
-                                                                                    defaultChecked={isAssigned}
-                                                                                    className="w-3 h-3 text-blue-600 rounded"
-                                                                                />
-                                                                                <label htmlFor={`edit-podcast-${userName}-${podcast}`} className="text-xs text-gray-700 truncate" title={podcast}>
-                                                                                    {podcast}
-                                                                                </label>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                                <div className="flex gap-2">
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            const selectedPodcasts = uniquePodcasts.filter(podcast => 
-                                                                                document.getElementById(`edit-podcast-${userName}-${podcast}`).checked
-                                                                            );
-                                                                            updateUserPodcasts(userName, selectedPodcasts);
-                                                                        }}
-                                                                        className="px-2 py-1 bg-green-500 text-white rounded text-xs"
-                                                                    >
-                                                                        שמור
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => setEditingUserPodcasts(null)}
-                                                                        className="px-2 py-1 bg-gray-300 text-gray-700 rounded text-xs"
-                                                                    >
-                                                                        ביטול
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <span className="text-sm text-gray-700">
-                                                                    {userData.assignedPodcasts?.length > 0 
-                                                                        ? `${userData.assignedPodcasts.length} פודקאסטים`
-                                                                        : 'ללא'}
-                                                                </span>
-                                                                <button
-                                                                    onClick={() => setEditingUserPodcasts(userName)}
-                                                                    className="text-blue-600 hover:text-blue-800 text-xs"
-                                                                >
-                                                                    ערוך
-                                                                </button>
-                                                                {userData.assignedPodcasts?.length > 0 && (
-                                                                    <div className="w-full text-xs text-gray-500 mt-1">
-                                                                        {userData.assignedPodcasts.join(', ')}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    
+                             
                                                     {userData.createdAt && (
                                                         <div className="mt-2 text-xs text-gray-400">
                                                             נוצר: {new Date(userData.createdAt).toLocaleString('he-IL')}
@@ -3892,23 +3823,348 @@
                                     )}
                                 </div>
 
-                                {/* Default Admin Users */}
+                                {/* Auto Distribution Section */}
                                 <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
-                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">מנהלים קבועים (בקוד)</h2>
-                                    <div className="flex flex-wrap gap-2">
-                                        {ADMIN_USERS.map(admin => (
-                                            <span key={admin} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm">
-                                                {admin}
-                                            </span>
-                                        ))}
-                                    </div>
-                                    <p className="text-sm text-gray-500 mt-2">
-                                        משתמשים אלו מוגדרים בקוד ותמיד יהיו מנהלים. לשינוי, יש לערוך את הקוד.
-                                    </p>
-                                </div>
-                            </div>
-                        )}
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">חלוקה אוטומטית (Stratified)</h2>
+                                    
+                                    <div className="space-y-6">
+                                        
+                                        {/* שלב 1: בחירת משתמשים */}
+                                        <div>
+                                            <label className="block text-sm font-bold text-gray-700 mb-2">
+                                                1. בחר משתמשים לחלוקה ({selectedUsersForDistribution.length} נבחרו)
+                                            </label>
+                                            <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                                                {Object.keys(registeredUsers).length > 0 ? (
+                                                    Object.keys(registeredUsers).map(user => (
+                                                        <div key={user} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded border-b last:border-0">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedUsersForDistribution.includes(user)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setSelectedUsersForDistribution([...selectedUsersForDistribution, user]);
+                                                                    } else {
+                                                                        setSelectedUsersForDistribution(selectedUsersForDistribution.filter(u => u !== user));
+                                                                    }
+                                                                }}
+                                                                className="w-5 h-5 text-blue-600 rounded cursor-pointer"
+                                                            />
+                                                            <span className="font-medium text-gray-800 cursor-pointer" onClick={() => {
+                                                                // Toggle on click text too
+                                                                if (selectedUsersForDistribution.includes(user)) {
+                                                                    setSelectedUsersForDistribution(selectedUsersForDistribution.filter(u => u !== user));
+                                                                } else {
+                                                                    setSelectedUsersForDistribution([...selectedUsersForDistribution, user]);
+                                                                }
+                                                            }}>{user}</span>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-center text-gray-500 py-4">אין משתמשים רשומים</div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* כפתורי בחירה מהירה */}
+                                            <div className="flex gap-3 mt-2">
+                                                <button
+                                                    onClick={() => setSelectedUsersForDistribution(Object.keys(registeredUsers))}
+                                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
+                                                >
+                                                    בחר הכל
+                                                </button>
+                                                <button
+                                                    onClick={() => setSelectedUsersForDistribution([])}
+                                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
+                                                >
+                                                    נקה הכל
+                                                </button>
+                                            </div>
+                                        </div>
 
+                                        {/* שלב 2: בחירת אחוזים */}
+                                        <div className={`transition-opacity duration-300 ${selectedUsersForDistribution.length > 0 ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                                            <label className="block text-sm font-bold text-gray-700 mb-2">
+                                                2. כמה אחוז מהדאטא יקבל <span className="underline">כל משתמש</span>?
+                                            </label>
+                                            
+                                            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                                <div className="flex items-center gap-4 mb-2">
+                                                    <input 
+                                                        type="range" 
+                                                        min="1" 
+                                                        max="100" 
+                                                        value={commonPercentage} 
+                                                        onChange={(e) => setCommonPercentage(parseInt(e.target.value))}
+                                                        className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
+                                                    />
+                                                    <div className="w-16 text-center font-bold text-blue-700 text-xl">
+                                                        {commonPercentage}%
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex justify-between text-xs text-blue-600 px-1">
+                                                    <span>1%</span>
+                                                    <span>50%</span>
+                                                    <span>100%</span>
+                                                </div>
+
+                                                <div className="mt-3 text-sm text-gray-700 text-center">
+                                                    כל משתמש יקבל בערך <strong>{Math.round(dataset.length * (commonPercentage / 100))}</strong> פריטים
+                                                    <br/>
+                                                    (מתוך {dataset.length} סה"כ)
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* שלב 3: ביצוע */}
+                                        <div className="pt-4 border-t border-gray-100">
+                                            <button
+                                                onClick={distributeItemsStratified}
+                                                disabled={selectedUsersForDistribution.length < 1 || distributionInProgress}
+                                                className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl hover:from-purple-700 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition transform active:scale-95 flex items-center justify-center gap-2"
+                                            >
+                                                {distributionInProgress ? (
+                                                    <>
+                                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                        <span>מבצע חלוקה...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className="text-xl">🚀</span>
+                                                        <span>בצע חלוקה (Stratify)</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                            
+                                            {/* תצוגת נתונים מסכמת */}
+                                            {selectedUsersForDistribution.length > 0 && (
+                                                <div className="mt-3 text-center text-xs text-gray-500">
+                                                    סך הכל הקצאות שיווצרו: <strong>{Math.round(dataset.length * (commonPercentage / 100)) * selectedUsersForDistribution.length}</strong>
+                                                    <span className="mx-2">|</span>
+                                                    כיסוי דאטא צפוי: <strong>{(Math.round(dataset.length * (commonPercentage / 100)) * selectedUsersForDistribution.length / dataset.length).toFixed(1)}x</strong>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                                                
+
+                                            
+
+
+                    
+
+                            {/* Detailed Distribution View */}
+                            {/* Stratification Analysis */}
+                            {/* Stratification Analysis & ID List - Full Width & Sorted IDs */}
+                            <div className="bg-white rounded-2xl shadow-lg p-6 mt-6 lg:col-span-2">
+                                <h2 className="text-xl font-semibold mb-4 text-gray-800">בדיקת Stratification ופירוט הקצאות</h2>
+                                
+                                {(() => {
+                                    // Get all users with assignments
+                                    const usersWithItems = Object.entries(registeredUsers)
+                                        .filter(([_, userData]) => userData.assignedItems?.length > 0);
+                                    
+                                    if (usersWithItems.length === 0) {
+                                        return (
+                                            <div className="text-center text-gray-500 py-8">
+                                                טרם חולקו פריטים למשתמשים
+                                            </div>
+                                        );
+                                    }
+                                    
+                                    // Calculate overall label distribution
+                                    const overallLabelDist = {};
+                                    dataset.forEach(item => {
+                                        const label = item.group_9_label || 'unknown';
+                                        overallLabelDist[label] = (overallLabelDist[label] || 0) + 1;
+                                    });
+                                    
+                                    // Calculate per-user label distribution
+                                    const userLabelDist = {};
+                                    usersWithItems.forEach(([userName, userData]) => {
+                                        userLabelDist[userName] = {};
+                                        userData.assignedItems.forEach(idx => {
+                                            const item = dataset[idx];
+                                            if (item) {
+                                                const label = item.group_9_label || 'unknown';
+                                                userLabelDist[userName][label] = (userLabelDist[userName][label] || 0) + 1;
+                                            }
+                                        });
+                                    });
+                                    
+                                    // Calculate expected vs actual for each label
+                                    const labels = Object.keys(overallLabelDist).sort();
+                                    const users = usersWithItems.map(([name]) => name);
+                                    
+                                    // Colors for users
+                                    const userColors = [
+                                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', 
+                                        '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'
+                                    ];
+                                    
+                                    return (
+                                        <div className="space-y-8">
+                                            
+                                            {/* 1. הטבלה בלבד */}
+                                            <div>
+                                                <h3 className="text-lg font-medium text-gray-800 mb-3">טבלת פיזור (Heatmap)</h3>
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-sm">
+                                                        <thead>
+                                                            <tr className="border-b-2 border-gray-200">
+                                                                <th className="text-right py-2 px-3 font-medium text-gray-700">תווית</th>
+                                                                <th className="text-center py-2 px-3 font-medium text-gray-700">סה"כ</th>
+                                                                {users.map((user) => (
+                                                                    <th key={user} className="text-center py-2 px-3 font-medium">{user}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {labels.map(label => {
+                                                                const total = overallLabelDist[label];
+                                                                return (
+                                                                    <tr key={label} className="border-b border-gray-100 hover:bg-gray-50">
+                                                                        <td className="py-2 px-3 font-medium text-gray-800">{label}</td>
+                                                                        <td className="py-2 px-3 text-center text-gray-600">{total}</td>
+                                                                        {users.map((user) => {
+                                                                            const value = userLabelDist[user][label] || 0;
+                                                                            return (
+                                                                                <td key={user} className="py-2 px-3 text-center">{value}</td>
+                                                                            );
+                                                                        })}
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                            {/* Totals row */}
+                                                            <tr className="border-t-2 border-gray-300 bg-gray-50 font-medium">
+                                                                <td className="py-2 px-3">סה"כ פריטים</td>
+                                                                <td className="py-2 px-3 text-center">{dataset.length}</td>
+                                                                {users.map(user => (
+                                                                    <td key={user} className="py-2 px-3 text-center">
+                                                                        {usersWithItems.find(([n]) => n === user)?.[1]?.assignedItems?.length || 0}
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            {/* 2. רשימת IDs לכל משתמש - ממוינת */}
+                                            <div className="border-t pt-6">
+                                                <h3 className="text-lg font-medium text-gray-800 mb-4 flex items-center gap-2">
+                                                    <span>📋</span>
+                                                    רשימת מזהים (IDs) שהוקצו - לפי סדר עולה
+                                                </h3>
+                                                
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {usersWithItems.map(([userName, userData]) => (
+                                                        <div key={userName} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                                            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                                                                <span className="font-bold text-gray-700">{userName}</span>
+                                                                <span className="text-xs bg-white border px-2 py-1 rounded-full text-gray-500">
+                                                                    {userData.assignedItems.length} פריטים
+                                                                </span>
+                                                            </div>
+                                                            <div className="p-3 bg-white h-48 overflow-y-auto">
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {userData.assignedItems
+                                                                        .map(idx => {
+                                                                            const item = dataset[idx];
+                                                                            return {
+                                                                                originalIdx: idx,
+                                                                                id: item ? item.id : `Index_${idx}`,
+                                                                                text: item ? item.text_before : ''
+                                                                            };
+                                                                        })
+                                                                        .sort((a, b) => {
+                                                                            // מיון חכם: מזהה מספרים בתוך מחרוזות (כך ש-2 יבוא לפני 10)
+                                                                            return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' });
+                                                                        })
+                                                                        .map((itemObj) => (
+                                                                            <div 
+                                                                                key={itemObj.originalIdx} 
+                                                                                className="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 select-all cursor-text font-mono hover:bg-blue-100 transition-colors"
+                                                                                title={itemObj.text}
+                                                                            >
+                                                                                {itemObj.id}
+                                                                            </div>
+                                                                        ))
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                            {/* Shared Items Table for User Pairs - moved here, improved style */}
+                            <div className="bg-white rounded-2xl shadow-lg p-8 mt-10 lg:col-span-2">
+                                <h2 className="text-2xl font-bold mb-6 text-indigo-700 flex items-center gap-2">
+                                    <span>👥</span> טבלת פריטים משותפים לכל זוג מתייגים
+                                </h2>
+                                {(() => {
+                                    const users = Object.keys(registeredUsers).filter(u => (registeredUsers[u].assignedItems || []).length > 0);
+                                    const pairItems = {};
+                                    for (let i = 0; i < users.length; i++) {
+                                        for (let j = i + 1; j < users.length; j++) {
+                                            const u1 = users[i], u2 = users[j];
+                                            const set1 = new Set(registeredUsers[u1].assignedItems || []);
+                                            const set2 = new Set(registeredUsers[u2].assignedItems || []);
+                                            const shared = [...set1].filter(x => set2.has(x));
+                                            if (shared.length > 0) {
+                                                pairItems[`${u1} & ${u2}`] = shared;
+                                            }
+                                        }
+                                    }
+                                    if (Object.keys(pairItems).length === 0) {
+                                        return <div className="text-gray-500 text-center py-8">אין זוגות עם פריטים משותפים</div>;
+                                    }
+                                    return (
+                                        <div className="overflow-x-auto max-h-96">
+                                            <table className="min-w-full text-sm border rounded-xl overflow-hidden shadow">
+                                                <thead>
+                                                    <tr className="bg-indigo-50">
+                                                        <th className="p-3 text-right font-semibold text-indigo-700">זוג מתייגים</th>
+                                                        <th className="p-3 text-right font-semibold text-indigo-700"># פריטים משותפים</th>
+                                                        <th className="p-3 text-right font-semibold text-indigo-700">מזהי פריטים</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {Object.entries(pairItems).map(([pair, items], idx) => (
+                                                        <tr key={pair} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                            <td className="p-3 font-medium text-gray-800 whitespace-nowrap">{pair}</td>
+                                                            <td className="p-3 text-blue-700 font-bold text-center">{items.length}</td>
+                                                            <td className="p-3">
+                                                                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto" style={{direction: 'ltr'}}>
+                                                                    {items.map(idx => {
+                                                                        const itemId = dataset[idx]?.id || idx;
+                                                                        return (
+                                                                            <span key={itemId} className="inline-block bg-blue-100 text-blue-800 rounded px-2 py-0.5 text-xs font-mono border border-blue-200" style={{margin: '1px'}}>{itemId}</span>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                            </div>
+                            </React.Fragment>
+                        )}
                         {/* Category Management Tab - Admin only */}
                         {activeTab === 'categories' && isAdmin && (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -4409,30 +4665,41 @@
                                                 <button
                                                     onClick={async () => {
                                                         if (!confirm('האם להתחיל תעתוק של כל הפריטים? זה יכול לקחת זמן.')) return;
-                                                        
-                                                        // Get already transcribed items
-                                                        let transcribedIds = new Set();
-                                                        if (window.firebaseEnabled && window.database) {
-                                                            const snapshot = await window.database.ref('transcriptions').once('value');
-                                                            const data = snapshot.val();
-                                                            if (data) transcribedIds = new Set(Object.keys(data));
+                                                        setBatchTranscribing(true);
+                                                        try {
+                                                            // Get already transcribed items
+                                                            let transcribedIds = new Set();
+                                                            if (window.firebaseEnabled && window.database) {
+                                                                const snapshot = await window.database.ref('transcriptions').once('value');
+                                                                const data = snapshot.val();
+                                                                if (data) transcribedIds = new Set(Object.keys(data));
+                                                            }
+                                                            const itemsToTranscribe = dataset.filter(d => d.audio_url && !transcribedIds.has(d.id));
+                                                            let completed = 0;
+                                                            for (const item of itemsToTranscribe) {
+                                                                // Build audio_url from audio_url
+                                                                let audioUrl = null;
+                                                                if (typeof item.audio_url === 'string') {
+                                                                    audioUrl = item.audio_url;
+                                                                } else if (item.audio_url && item.audio_url.path) {
+                                                                    audioUrl = `https://huggingface.co/datasets/Zivf/NLP_The_Sound_Of_Silence_Datasets/resolve/main/${item.audio_url.path}`;
+                                                                } else if (Array.isArray(item.audio_url) && item.audio_url.length > 0) {
+                                                                    audioUrl = item.audio_url[0].src || item.audio_url[0];
+                                                                }
+                                                                if (!audioUrl) continue;
+                                                                await transcribeWithAssemblyAI(audioUrl, item.id);
+                                                                completed++;
+                                                                console.log(`Transcribed ${completed}/${itemsToTranscribe.length}`);
+                                                            }
+                                                            alert(`סיימנו לתעתק ${completed} פריטים!`);
+                                                        } finally {
+                                                            setBatchTranscribing(false);
                                                         }
-                                                        
-                                                        const itemsToTranscribe = dataset.filter(d => d.audio_url && !transcribedIds.has(d.id));
-                                                        let completed = 0;
-                                                        
-                                                        for (const item of itemsToTranscribe) {
-                                                            await transcribeWithAssemblyAI(item.audio_url, item.id);
-                                                            completed++;
-                                                            console.log(`Transcribed ${completed}/${itemsToTranscribe.length}`);
-                                                        }
-                                                        
-                                                        alert(`סיימנו לתעתק ${completed} פריטים!`);
                                                     }}
-                                                    disabled={isTranscribing}
+                                                    disabled={batchTranscribing}
                                                     className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
                                                 >
-                                                    {isTranscribing ? 'מתעתק...' : '🎯 תעתק את כל הפריטים החסרים'}
+                                                    {batchTranscribing ? 'מתעתק...' : '🎯 תעתק את כל הפריטים החסרים'}
                                                 </button>
                                             </div>
                                             
