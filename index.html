@@ -868,14 +868,14 @@
 
             // Fetch dataset from HuggingFace
             const fetchFromHuggingFace = async () => {
-                let apiUrl = 'https://datasets-server.huggingface.co/rows?dataset=Zivf/silence-hebrew-multispeaker&config=default&split=train&offset=0&length=100';
+                let apiUrl = 'https://datasets-server.huggingface.co/rows?dataset=Zivf/NLP_The_Sound_Of_Silence_Datasets&config=default&split=train&offset=0&length=100';
                 
                 console.log('Fetching from HuggingFace:', apiUrl);
                 let response = await fetch(apiUrl);
                 
                 if (!response.ok) {
                     // Try alternative API endpoint
-                    apiUrl = 'https://datasets-server.huggingface.co/first-rows?dataset=Zivf/silence-hebrew-multispeaker&config=default&split=train';
+                    apiUrl = 'https://datasets-server.huggingface.co/first-rows?dataset=Zivf/NLP_The_Sound_Of_Silence_Datasets&config=default&split=train';
                     console.log('Trying alternative endpoint:', apiUrl);
                     response = await fetch(apiUrl);
                 }
@@ -908,7 +908,7 @@
                         } else if (row.audio_clip_path.src) {
                             audioUrl = row.audio_clip_path.src;
                         } else if (row.audio_clip_path.path) {
-                            audioUrl = `https://huggingface.co/datasets/Zivf/silence-hebrew-multispeaker/resolve/main/${row.audio_clip_path.path}`;
+                            audioUrl = `https://huggingface.co/datasets/Zivf/NLP_The_Sound_Of_Silence_Datasets/resolve/main/${row.audio_clip_path.path}`;
                         }
                     }
                     
@@ -1650,12 +1650,38 @@
             };
 
             // Delete data item
-            const deleteDataItem = (itemId) => {
+            const deleteDataItem = async (itemId) => {
                 if (!confirm(`האם למחוק את הפריט ${itemId}?`)) return;
-                setDataset(prev => prev.filter(item => item.id !== itemId));
-                if (currentIndex >= dataset.length - 1) {
-                    setCurrentIndex(Math.max(0, dataset.length - 2));
+                const newDataset = dataset.filter(item => item.id !== itemId);
+                setDataset(newDataset);
+                await saveDatasetToStorage(newDataset);
+                if (currentIndex >= newDataset.length) {
+                    setCurrentIndex(Math.max(0, newDataset.length - 1));
                 }
+            };
+
+            // Delete all data
+            const deleteAllData = async () => {
+                if (!confirm('האם אתה בטוח שברצונך למחוק את כל הדאטא? פעולה זו בלתי הפיכה!')) return;
+                if (!confirm('אישור סופי: כל הדאטא יימחק. להמשיך?')) return;
+                
+                setDataset([]);
+                setCurrentIndex(0);
+                
+                // Clear from Firebase
+                if (window.firebaseEnabled && window.database) {
+                    try {
+                        await window.database.ref('dataset').remove();
+                        console.log('Dataset deleted from Firebase');
+                    } catch (error) {
+                        console.error('Error deleting dataset from Firebase:', error);
+                    }
+                }
+                
+                // Clear from localStorage
+                localStorage.removeItem('podcast-dataset');
+                
+                alert('כל הדאטא נמחק בהצלחה. לחץ על "טען מחדש מ-HuggingFace" כדי להוריד דאטא חדש.');
             };
 
             // Add new data item
@@ -4073,6 +4099,12 @@
                                             className="w-full py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg font-medium transition"
                                         >
                                             🔄 טען מחדש מ-HuggingFace
+                                        </button>
+                                        <button
+                                            onClick={deleteAllData}
+                                            className="w-full py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-medium transition"
+                                        >
+                                            🗑️ מחק את כל הדאטא
                                         </button>
                                         <p className="text-xs text-gray-500 text-center">
                                             הדאטא נשמר ב-Firebase ונטען אוטומטית
