@@ -2837,10 +2837,19 @@
                                             <div className="text-gray-600">סה"כ פריטים</div>
                                         </div>
                                         <div className="bg-orange-50 rounded-lg p-4 text-center">
-                                            <div className="text-3xl font-bold text-orange-600">
-                                                {stats.totalItems > 0 ? Math.round((stats.taggedItems / stats.totalItems) * 100) : 0}%
-                                            </div>
-                                            <div className="text-gray-600">אחוז השלמה</div>
+                                            {(() => {
+                                                const desiredPerItem = 2; // target tags per item
+                                                const targetTags = stats.totalItems * desiredPerItem;
+                                                const coveragePct = targetTags > 0 ? Math.round((stats.taggedEntries / targetTags) * 100) : 0;
+                                                const remainingTags = Math.max(0, targetTags - (stats.taggedEntries || 0));
+                                                return (
+                                                    <>
+                                                        <div className="text-3xl font-bold text-orange-600">{coveragePct}%</div>
+                                                        <div className="text-gray-600">התקדמות לכיסוי יעד</div>
+                                                        <div className="text-sm text-gray-500 mt-1">{stats.taggedEntries} מתוך {targetTags} תיוגים — נשארו {remainingTags}</div>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -2851,18 +2860,18 @@
                                     <div className="space-y-3">
                                         {categories.map(category => {
                                             const count = stats.categoryCount[category] || 0;
-                                            const maxCount = Math.max(...Object.values(stats.categoryCount), 1);
-                                            const percentage = (count / maxCount) * 100;
+                                            const totalTags = stats.taggedEntries || 0;
+                                            const percentageOfAll = totalTags > 0 ? (count / totalTags) * 100 : 0;
                                             return (
                                                 <div key={category}>
                                                     <div className="flex justify-between text-sm mb-1">
                                                         <span className="text-gray-700">{category}</span>
-                                                        <span className="font-medium">{count}</span>
+                                                        <span className="font-medium">{count} <span className="text-gray-400 text-xs">({percentageOfAll.toFixed(1)}%)</span></span>
                                                     </div>
                                                     <div className="w-full bg-gray-200 rounded-full h-2">
                                                         <div 
                                                             className="bg-blue-600 h-2 rounded-full transition-all"
-                                                            style={{ width: `${percentage}%` }}
+                                                            style={{ width: `${percentageOfAll}%` }}
                                                         ></div>
                                                     </div>
                                                 </div>
@@ -3104,9 +3113,9 @@
                                             const confusionMatrix = {};
                                             const pairwiseAgreements = {};
                                             
-                                            // Initialize category agreement
+                                            // Initialize category agreement (track totals across ALL pairwise comparisons)
                                             categories.forEach(cat => {
-                                                categoryAgreement[cat] = { agree: 0, total: 0 };
+                                                categoryAgreement[cat] = { agree: 0, total: 0, yesCount: 0, yesAgree: 0, noAgree: 0, kappa: 0 };
                                                 confusionMatrix[cat] = {};
                                                 categories.forEach(cat2 => {
                                                     confusionMatrix[cat][cat2] = 0;
@@ -3160,15 +3169,28 @@
                                                             if (tags2.includes(cat)) pairwiseAgreements[pairKey].counts[userB][cat]++;
                                                         });
                                                         
-                                                        // Category-level agreement
+                                                        // Category-level agreement (count every pairwise comparison for each category)
                                                         categories.forEach(cat => {
                                                             const in1 = tags1.includes(cat);
                                                             const in2 = tags2.includes(cat);
+                                                            // Each pairwise comparison contributes one observation for this category (for overall pairwise agreement)
+                                                            categoryAgreement[cat].total++;
+                                                            // Count yes occurrences for marginal probabilities (two judgments per pair)
+                                                            if (in1) categoryAgreement[cat].yesCount++;
+                                                            if (in2) categoryAgreement[cat].yesCount++;
+
+                                                            // Presence: at least one labeled yes
                                                             if (in1 || in2) {
-                                                                categoryAgreement[cat].total++;
-                                                                if (in1 && in2) {
-                                                                    categoryAgreement[cat].agree++;
-                                                                }
+                                                                categoryAgreement[cat].presenceTotal = (categoryAgreement[cat].presenceTotal || 0) + 1;
+                                                            }
+
+                                                            // Agreement: both yes or both no (for overall pairwise agreement)
+                                                            if (in1 && in2) {
+                                                                categoryAgreement[cat].agree++;
+                                                                categoryAgreement[cat].yesAgree++;
+                                                            } else if (!in1 && !in2) {
+                                                                categoryAgreement[cat].agree++;
+                                                                categoryAgreement[cat].noAgree++;
                                                             }
                                                         });
                                                         
@@ -3222,6 +3244,23 @@
                                             const kappa = expectedAgreement < 1 
                                                 ? (percentAgreement - expectedAgreement) / (1 - expectedAgreement)
                                                 : 1;
+
+                                            // Calculate per-category Cohen's Kappa (treating category as binary yes/no)
+                                            Object.keys(categoryAgreement).forEach(cat => {
+                                                const data = categoryAgreement[cat];
+                                                const t = data.total || 0;
+                                                if (t === 0) {
+                                                    data.kappa = 0;
+                                                    return;
+                                                }
+                                                // Observed agreement (both yes or both no)
+                                                const Po_cat = data.agree / t;
+                                                // Marginal probability of 'yes' across all judgments (two judgments per pair)
+                                                const p_yes = data.yesCount / (t * 2);
+                                                // Expected agreement by chance for binary: P(yes)^2 + P(no)^2
+                                                const Pe_cat = (p_yes * p_yes) + ((1 - p_yes) * (1 - p_yes));
+                                                data.kappa = Pe_cat < 1 ? ((Po_cat - Pe_cat) / (1 - Pe_cat)) : 1;
+                                            });
                                             
                                             // Calculate per-pair Cohen's Kappa for each user pair
                                             Object.keys(pairwiseAgreements).forEach(pk => {
@@ -3343,22 +3382,29 @@
                                                     <div className="space-y-2">
                                                         {categories.map(cat => {
                                                             const data = agreement.categoryAgreement[cat];
-                                                            const pct = data.total > 0 ? (data.agree / data.total * 100) : 0;
-                                                            const barColor = pct >= 80 ? 'bg-green-500' : pct >= 60 ? 'bg-blue-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+                                                            // Show only presence agreement: proportion of pairs where BOTH labeled yes out of pairs where AT LEAST ONE labeled yes
+                                                            const presenceTotal = data && data.presenceTotal ? data.presenceTotal : 0;
+                                                            const presencePct = presenceTotal > 0 ? ( (data.yesAgree || 0) / presenceTotal * 100 ) : 0;
+                                                            const barColor = presencePct >= 80 ? 'bg-green-500' : presencePct >= 60 ? 'bg-blue-500' : presencePct >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+                                                            const kappaVal = (data && data.kappa !== undefined && !isNaN(data.kappa)) ? data.kappa : 0;
+                                                            const kappaInfoCat = getKappaInterpretation(kappaVal);
                                                             return (
                                                                 <div key={cat}>
                                                                     <div className="flex justify-between items-center mb-1">
                                                                         <span className="text-sm text-gray-700">{cat}</span>
-                                                                        <span className="text-sm">
-                                                                            {data.total > 0 ? (
-                                                                                <span className="font-medium">{pct.toFixed(0)}% <span className="text-gray-400 text-xs">({data.agree}/{data.total})</span></span>
+                                                                        <span className="text-sm flex items-center gap-2">
+                                                                            {presenceTotal > 0 ? (
+                                                                                <>
+                                                                                    <span className="font-medium">{presencePct.toFixed(0)}% <span className="text-gray-400 text-xs">({(data.yesAgree||0)}/{presenceTotal})</span></span>
+                                                                                    <span className={`${kappaInfoCat.bg} ${kappaInfoCat.color} text-xs font-medium px-2 py-0.5 rounded`}>{kappaVal.toFixed(3)}</span>
+                                                                                </>
                                                                             ) : (
                                                                                 <span className="text-gray-400">-</span>
                                                                             )}
                                                                         </span>
                                                                     </div>
                                                                     <div className="w-full bg-gray-200 rounded-full h-2">
-                                                                        <div className={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }}></div>
+                                                                        <div className={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${presencePct}%` }}></div>
                                                                     </div>
                                                                 </div>
                                                             );
