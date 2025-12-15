@@ -183,7 +183,26 @@
             const secs = (seconds % 60).toFixed(1);
             return `${mins}m ${secs}s`;
         };
+        // Helper functions to encode/decode email for Firebase
+        const encodeEmail = (email) => {
+            if (!email) return email;
+            return email.replace(/\./g, '_DOT_')
+                        .replace(/#/g, '_HASH_')
+                        .replace(/\$/g, '_DOLLAR_')
+                        .replace(/\//g, '_SLASH_')
+                        .replace(/\[/g, '_LBRACKET_')
+                        .replace(/\]/g, '_RBRACKET_');
+        };
 
+        const decodeEmail = (encoded) => {
+            if (!encoded) return encoded;
+            return encoded.replace(/_DOT_/g, '.')
+                        .replace(/_HASH_/g, '#')
+                        .replace(/_DOLLAR_/g, '$')
+                        .replace(/_SLASH_/g, '/')
+                        .replace(/_LBRACKET_/g, '[')
+                        .replace(/_RBRACKET_/g, ']');
+        };
         const PodcastTaggingApp = () => {
             const [username, setUsername] = useState('');
             const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -602,27 +621,31 @@
             }, [currentItemIdForTranscription]);
 
             // Load categories on startup
+            // Load registered users on startup
             useEffect(() => {
-                const loadCategories = async () => {
+                const loadUsers = async () => {
                     if (window.firebaseEnabled && window.database) {
                         try {
-                            const snapshot = await window.database.ref('categories').once('value');
+                            const snapshot = await window.database.ref('registered-users').once('value');
                             const data = snapshot.val();
-                            if (data && Array.isArray(data)) {
-                                setCategories(data);
-                            } else {
-                                // Initialize with default categories if none exist
-                                await window.database.ref('categories').set(DEFAULT_CATEGORIES);
+                            if (data) {
+                                // Decode emails from Firebase keys
+                                const decodedUsers = {};
+                                Object.entries(data).forEach(([encodedEmail, userData]) => {
+                                    decodedUsers[decodeEmail(encodedEmail)] = userData;
+                                });
+                                setRegisteredUsers(decodedUsers);
+                                localStorage.setItem('registered-users', JSON.stringify(decodedUsers));
                             }
                         } catch (error) {
-                            console.error('Error loading categories:', error);
+                            console.error('Error loading users:', error);
                         }
                     } else {
-                        const saved = localStorage.getItem('categories');
-                        if (saved) setCategories(JSON.parse(saved));
+                        const saved = localStorage.getItem('registered-users');
+                        if (saved) setRegisteredUsers(JSON.parse(saved));
                     }
                 };
-                loadCategories();
+                loadUsers();
             }, []);
 
             // Save categories
@@ -654,6 +677,7 @@
 
             // Distribute items with percentage-based allocation
          // Distribute items with percentage-based allocation
+           // Distribute items with percentage-based allocation
             const distributeItemsStratified = async () => {
                 if (selectedUsersForDistribution.length < 1) {
                     alert('יש לבחור לפחות משתמש אחד לחלוקה');
@@ -663,15 +687,11 @@
                 // Calculate how many items each user should get based on the COMMON percentage
                 const userItemCounts = {};
                 selectedUsersForDistribution.forEach(user => {
-                    // כאן השינוי: שימוש באחוז המשותף לכולם
                     userItemCounts[user] = Math.round(dataset.length * (commonPercentage / 100));
                 });
                 
                 // Calculate total assignments and verify coverage
                 const totalAssignments = Object.values(userItemCounts).reduce((a, b) => a + b, 0);
-                const targetCoverage = dataset.length * 2; // Target: Double coverage
-                
-                // יצירת הודעת סיכום לפני אישור
                 const itemsPerUser = Math.round(dataset.length * (commonPercentage / 100));
                 
                 let confirmMsg = `הגדרת חלוקה:\n`;
@@ -679,13 +699,6 @@
                 confirmMsg += `אחוז לכל משתמש: ${commonPercentage}%\n`;
                 confirmMsg += `כמות פריטים למשתמש: ~${itemsPerUser}\n\n`;
                 confirmMsg += `סה"כ תיוגים שיווצרו: ${totalAssignments}\n`;
-                
-                if (totalAssignments < targetCoverage) {
-                    confirmMsg += `⚠️ שים לב: זה פחות מ-${targetCoverage} (הדרוש לכיסוי כפול מלא).\n`;
-                } else {
-                    confirmMsg += `✅ מספיק לכיסוי כפול של כל הדאטא.\n`;
-                }
-                
                 confirmMsg += `\nהאם לבצע את החלוקה (Stratified)?`;
 
                 if (!confirm(confirmMsg)) {
@@ -706,9 +719,6 @@
                     });
                     
                     // Initialize assignments
-                    const itemAssignments = {}; // {itemIndex: [user1, user2]}
-                    dataset.forEach((_, idx) => itemAssignments[idx] = []);
-                    
                     const userAssignments = {};
                     selectedUsersForDistribution.forEach(user => {
                         userAssignments[user] = [];
@@ -721,6 +731,7 @@
                         let userOrder = [...selectedUsersForDistribution];
                         let userPtr = 0;
                         let userPtr2 = 1;
+                        
                         // For each item in this label group
                         shuffledItems.forEach(itemIdx => {
                             // If we run out of users, reshuffle order
@@ -729,26 +740,24 @@
                                 userPtr = 0;
                                 userPtr2 = 1;
                             }
+                            
                             // Assign to two different users
                             const userA = userOrder[userPtr % userOrder.length];
                             const userB = userOrder[userPtr2 % userOrder.length];
+                            
                             // Assign item to both users
                             if (!userAssignments[userA].includes(itemIdx)) {
                                 userAssignments[userA].push(itemIdx);
-                                itemAssignments[itemIdx].push(userA);
                             }
                             if (!userAssignments[userB].includes(itemIdx)) {
                                 userAssignments[userB].push(itemIdx);
-                                itemAssignments[itemIdx].push(userB);
                             }
+                            
                             userPtr = (userPtr + 1) % userOrder.length;
                             userPtr2 = (userPtr2 + 1) % userOrder.length;
                             if (userPtr2 === userPtr) userPtr2 = (userPtr2 + 1) % userOrder.length;
                         });
                     });
-                    
-                    // Fill remaining quota if stratification caused rounding errors (Optional cleanup)
-                    // ... (Keeping logic simple for now based on your request) ...
                     
                     // Sort each user's items
                     Object.keys(userAssignments).forEach(user => {
@@ -767,19 +776,38 @@
                         }
                     });
                     
-                    await saveRegisteredUsers(updatedUsers);
+                    // CRITICAL: Save to both localStorage AND Firebase
+                    console.log('Saving updated users:', updatedUsers);
+                    
+                    // Save to localStorage first
+                    localStorage.setItem('registered-users', JSON.stringify(updatedUsers));
+                    
+                    // Save to Firebase
+                    if (window.firebaseEnabled && window.database) {
+                        try {
+                            await saveRegisteredUsers(updatedUsers);
+                            console.log('✅ Users saved to Firebase successfully');
+                        } catch (error) {
+                            console.error('❌ Error saving to Firebase:', error);
+                            alert('שגיאה בשמירה ל-Firebase: ' + error.message);
+                            setDistributionInProgress(false);
+                            return;
+                        }
+                    }
+                    
+                    // Update local state
                     setRegisteredUsers(updatedUsers);
                     setSelectedUsersForDistribution([]);
                     
-                    alert('✅ החלוקה בוצעה בהצלחה!');
+                    alert('✅ החלוקה בוצעה בהצלחה ונשמרה!');
                     
                 } catch (error) {
                     console.error('Error distributing items:', error);
-                    alert('שגיאה בחלוקת הפריטים');
+                    alert('שגיאה בחלוקת הפריטים: ' + error.message);
+                } finally {
+                    setDistributionInProgress(false);
                 }
-                
-                setDistributionInProgress(false);
-            };        
+            };
 
 
             // Delete category
@@ -800,32 +828,46 @@
             };
 
             // Load registered users on startup
+            // Subscribe to Firebase for registered users
             useEffect(() => {
-                const loadUsers = async () => {
-                    if (window.firebaseEnabled && window.database) {
-                        try {
-                            const snapshot = await window.database.ref('registered-users').once('value');
-                            const data = snapshot.val();
-                            if (data) setRegisteredUsers(data);
-                        } catch (error) {
-                            console.error('Error loading users:', error);
-                        }
-                    } else {
-                        const saved = localStorage.getItem('registered-users');
-                        if (saved) setRegisteredUsers(JSON.parse(saved));
+                if (!window.firebaseEnabled || !window.database) return;
+                
+                const usersRef = window.database.ref('registered-users');
+                
+                const unsubscribe = usersRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        // Decode emails from Firebase keys
+                        const decodedUsers = {};
+                        Object.entries(data).forEach(([encodedEmail, userData]) => {
+                            decodedUsers[decodeEmail(encodedEmail)] = userData;
+                        });
+                        setRegisteredUsers(decodedUsers);
+                        localStorage.setItem('registered-users', JSON.stringify(decodedUsers));
                     }
-                };
-                loadUsers();
+                });
+                
+                return () => usersRef.off('value', unsubscribe);
             }, []);
 
             // Save registered users
+            // Save registered users
             const saveRegisteredUsers = async (users) => {
-                localStorage.setItem('registered-users', JSON.stringify(users));
+                // Encode emails in keys for Firebase
+                const encodedUsers = {};
+                Object.entries(users).forEach(([email, data]) => {
+                    encodedUsers[encodeEmail(email)] = data;
+                });
+                
+                localStorage.setItem('registered-users', JSON.stringify(users)); // Save original emails locally
+                
                 if (window.firebaseEnabled && window.database) {
                     try {
-                        await window.database.ref('registered-users').set(users);
+                        await window.database.ref('registered-users').set(encodedUsers);
+                        console.log('✅ Saved to Firebase with encoded keys');
                     } catch (error) {
                         console.error('Error saving users:', error);
+                        throw error; // Re-throw so caller knows it failed
                     }
                 }
             };
@@ -1159,7 +1201,7 @@
             const handleLogin = () => {
                 if (!username.trim()) return;
                 
-                // Check if user is admin or registered
+                // Check if user is admin or registered (with both original and encoded versions)
                 const isUserAdmin = ADMIN_USERS.includes(username.trim());
                 const isUserRegistered = registeredUsers[username.trim()];
                 
@@ -1168,7 +1210,7 @@
                     setError(null);
                     
                     // Check if user has opted out of welcome modal (per-user setting)
-                    const hideModal = localStorage.getItem(`hideWelcomeModal_${username.trim()}`) === 'true';
+                    const hideModal = localStorage.getItem(`hideWelcomeModal_${encodeEmail(username.trim())}`) === 'true';
                     setDontShowAgain(hideModal);
                     setShowWelcomeModal(!hideModal);
                 } else {
@@ -1935,7 +1977,7 @@
                                 כלי תיוג פודקאסטים
                             </h1>
                             <p className="text-gray-600 mb-6 text-center">
-                                הזן את שמך כדי להתחיל לתייג רגעי שתיקה בפודקאסטים
+                                הזן את המייל שלך כדי להתחיל לתייג רגעי שתיקה בפודקאסטים
                             </p>
                             
                             {error && (
@@ -1946,7 +1988,7 @@
                             
                             <input
                                 type="text"
-                                placeholder="השם שלך"
+                                placeholder="המייל שלך"
                                 value={username}
                                 onChange={(e) => { setUsername(e.target.value); setError(null); }}
                                 onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
@@ -2153,9 +2195,9 @@
                                                 onChange={(e) => {
                                                     setDontShowAgain(e.target.checked);
                                                     if (e.target.checked) {
-                                                        localStorage.setItem(`hideWelcomeModal_${username}`, 'true');
+                                                        localStorage.setItem(`hideWelcomeModal_${encodeEmail(username)}`, 'true');
                                                     } else {
-                                                        localStorage.removeItem(`hideWelcomeModal_${username}`);
+                                                        localStorage.removeItem(`hideWelcomeModal_${encodeEmail(username)}`);
                                                     }
                                                 }}
                                                 className="w-4 h-4 text-blue-600 rounded"
