@@ -3036,15 +3036,28 @@
                                         </div>
                                         <div className="bg-orange-50 rounded-lg p-4 text-center">
                                             {(() => {
-                                                const desiredPerItem = 2; // target tags per item
-                                                const targetTags = stats.totalItems * desiredPerItem;
-                                                const coveragePct = targetTags > 0 ? Math.round((stats.taggedEntries / targetTags) * 100) : 0;
-                                                const remainingTags = Math.max(0, targetTags - (stats.taggedEntries || 0));
+                                                // Calculate total assigned tags across all users
+                                                let totalAssignedTags = 0;
+                                                Object.values(registeredUsers).forEach(userData => {
+                                                    if (userData.assignedItems && Array.isArray(userData.assignedItems)) {
+                                                        totalAssignedTags += userData.assignedItems.length;
+                                                    }
+                                                });
+                                                
+                                                const coveragePct = stats.totalItems > 0 
+                                                    ? Math.round((stats.totalItems / totalAssignedTags) * 100) 
+                                                    : 0;
+                                                
                                                 return (
                                                     <>
                                                         <div className="text-3xl font-bold text-orange-600">{coveragePct}%</div>
-                                                        <div className="text-gray-600">התקדמות לכיסוי יעד</div>
-                                                        <div className="text-sm text-gray-500 mt-1">{stats.taggedEntries} מתוך {targetTags} תיוגים — נשארו {remainingTags}</div>
+                                                        <div className="text-gray-600">כיסוי ממוצע</div>
+                                                        <div className="text-sm text-gray-500 mt-1">
+                                                            {stats.totalItems} תיוגים מוקצים מתוך {totalAssignedTags} פריטים
+                                                        </div>
+                                                        <div className="text-xs text-gray-400 mt-1">
+                                                            כיסוי תיוגים: {stats.totalItems > 0 ? (stats.totalItems / totalAssignedTags).toFixed(2) : 0}x
+                                                        </div>
                                                     </>
                                                 );
                                             })()}
