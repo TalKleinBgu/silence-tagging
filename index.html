@@ -1638,7 +1638,7 @@
 
             // Export tags to CSV
             const exportTagsCSV = () => {
-                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'play_count', 'pause_count', 'seek_forward_count', 'seek_backward_count', 'audio_played', 'audio_history', 'timestamp'];
+                const headers = ['tagger_name', 'item_id', 'text_before', 'text_after', 'silence_duration', 'silence_offset_hms', 'speaker', 'next_speaker', 'podcast_id', 'tags', 'note', 'play_count', 'pause_count', 'seek_forward_count', 'seek_backward_count', 'audio_played', 'audio_history', 'timestamp'];
                 const rows = [headers.join(',')];
                 
                 Object.entries(allTags).forEach(([itemId, entries]) => {
@@ -1654,6 +1654,7 @@
                             `"${entry.next_speaker || ''}"`,
                             `"${(entry.podcast_id || '').replace(/"/g, '""')}"`,
                             `"${entry.tags.join('; ')}"`,
+                            `"${(entry.note || '').replace(/"/g, '""')}"`,
                             entry.play_count || 0,
                             entry.pause_count || 0,
                             entry.seek_forward_count || 0,
