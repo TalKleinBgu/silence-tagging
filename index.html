@@ -678,28 +678,24 @@
             // Distribute items with percentage-based allocation
          // Distribute items with percentage-based allocation
            // Distribute items with percentage-based allocation
+            // Distribute items with percentage-based allocation
             const distributeItemsStratified = async () => {
                 if (selectedUsersForDistribution.length < 1) {
                     alert('יש לבחור לפחות משתמש אחד לחלוקה');
                     return;
                 }
                 
-                // Calculate how many items each user should get based on the COMMON percentage
-                const userItemCounts = {};
-                selectedUsersForDistribution.forEach(user => {
-                    userItemCounts[user] = Math.round(dataset.length * (commonPercentage / 100));
-                });
-                
-                // Calculate total assignments and verify coverage
-                const totalAssignments = Object.values(userItemCounts).reduce((a, b) => a + b, 0);
+                // Calculate how many items each user should get based on the percentage
                 const itemsPerUser = Math.round(dataset.length * (commonPercentage / 100));
+                const totalAssignments = itemsPerUser * selectedUsersForDistribution.length;
                 
-                let confirmMsg = `הגדרת חלוקה:\n`;
+                let confirmMsg = `הגדרת חלוקה פשוטה:\n`;
                 confirmMsg += `מספר משתמשים: ${selectedUsersForDistribution.length}\n`;
                 confirmMsg += `אחוז לכל משתמש: ${commonPercentage}%\n`;
-                confirmMsg += `כמות פריטים למשתמש: ~${itemsPerUser}\n\n`;
+                confirmMsg += `כמות פריטים למשתמש: ${itemsPerUser}\n\n`;
                 confirmMsg += `סה"כ תיוגים שיווצרו: ${totalAssignments}\n`;
-                confirmMsg += `\nהאם לבצע את החלוקה (Stratified)?`;
+                confirmMsg += `כיסוי דאטא: ${(totalAssignments / dataset.length).toFixed(1)}x\n`;
+                confirmMsg += `\nהאם לבצע את החלוקה?`;
 
                 if (!confirm(confirmMsg)) {
                     return;
@@ -708,15 +704,14 @@
                 setDistributionInProgress(true);
                 
                 try {
-                    // Group items by group_9_label for stratification
-                    const labelGroups = {};
-                    dataset.forEach((item, index) => {
-                        const label = item.group_9_label || 'unknown';
-                        if (!labelGroups[label]) {
-                            labelGroups[label] = [];
-                        }
-                        labelGroups[label].push(index);
-                    });
+                    // Create a shuffled array of all item indices
+                    const allIndices = dataset.map((_, idx) => idx);
+                    
+                    // Shuffle using Fisher-Yates algorithm
+                    for (let i = allIndices.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [allIndices[i], allIndices[j]] = [allIndices[j], allIndices[i]];
+                    }
                     
                     // Initialize assignments
                     const userAssignments = {};
@@ -724,43 +719,17 @@
                         userAssignments[user] = [];
                     });
                     
-                    // For each label group, assign each item to exactly 2 users (stratified)
-                    Object.entries(labelGroups).forEach(([label, indices]) => {
-                        // Shuffle items and users for randomness
-                        const shuffledItems = [...indices].sort(() => Math.random() - 0.5);
-                        let userOrder = [...selectedUsersForDistribution];
-                        let userPtr = 0;
-                        let userPtr2 = 1;
+                    // Distribute items: each user gets their percentage from the shuffled array
+                    selectedUsersForDistribution.forEach((user, userIdx) => {
+                        // Each user starts from a different point to maximize coverage
+                        const startIdx = Math.floor((dataset.length / selectedUsersForDistribution.length) * userIdx);
                         
-                        // For each item in this label group
-                        shuffledItems.forEach(itemIdx => {
-                            // If we run out of users, reshuffle order
-                            if (userPtr >= userOrder.length) {
-                                userOrder = [...userOrder].sort(() => Math.random() - 0.5);
-                                userPtr = 0;
-                                userPtr2 = 1;
-                            }
-                            
-                            // Assign to two different users
-                            const userA = userOrder[userPtr % userOrder.length];
-                            const userB = userOrder[userPtr2 % userOrder.length];
-                            
-                            // Assign item to both users
-                            if (!userAssignments[userA].includes(itemIdx)) {
-                                userAssignments[userA].push(itemIdx);
-                            }
-                            if (!userAssignments[userB].includes(itemIdx)) {
-                                userAssignments[userB].push(itemIdx);
-                            }
-                            
-                            userPtr = (userPtr + 1) % userOrder.length;
-                            userPtr2 = (userPtr2 + 1) % userOrder.length;
-                            if (userPtr2 === userPtr) userPtr2 = (userPtr2 + 1) % userOrder.length;
-                        });
-                    });
-                    
-                    // Sort each user's items
-                    Object.keys(userAssignments).forEach(user => {
+                        for (let i = 0; i < itemsPerUser && i < allIndices.length; i++) {
+                            const itemIdx = allIndices[(startIdx + i) % allIndices.length];
+                            userAssignments[user].push(itemIdx);
+                        }
+                        
+                        // Sort each user's items
                         userAssignments[user].sort((a, b) => a - b);
                     });
                     
@@ -776,7 +745,7 @@
                         }
                     });
                     
-                    // CRITICAL: Save to both localStorage AND Firebase
+                    // Save to both localStorage AND Firebase
                     console.log('Saving updated users:', updatedUsers);
                     
                     // Save to localStorage first
@@ -808,7 +777,6 @@
                     setDistributionInProgress(false);
                 }
             };
-
 
             // Delete category
             const deleteCategory = async (categoryToDelete) => {
