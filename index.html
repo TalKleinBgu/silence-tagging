@@ -240,6 +240,7 @@
             const [newUserName, setNewUserName] = useState('');
             const [newUserCategories, setNewUserCategories] = useState([]);
             const [newUserIsAdmin, setNewUserIsAdmin] = useState(false);
+            const [newUserAssignedItems, setNewUserAssignedItems] = useState([]);
             const [editingUserItems, setEditingUserItems] = useState(null); // username being edited
             const [editingDataItem, setEditingDataItem] = useState(null); // data item being edited
             const [editingDataValues, setEditingDataValues] = useState({}); // values being edited
@@ -854,7 +855,7 @@
                     [newUserName.trim()]: {
                         categories: newUserCategories,
                         isAdmin: newUserIsAdmin,
-                        assignedItems: [], // No manual assignment
+                        assignedItems: newUserAssignedItems, // Manual assignment
                         assignedPodcasts: [], // No manual assignment
                         createdAt: new Date().toISOString()
                     }
@@ -865,6 +866,7 @@
                 setNewUserName('');
                 setNewUserCategories([]);
                 setNewUserIsAdmin(false);
+                setNewUserAssignedItems([]);
             };
 
 
@@ -902,6 +904,15 @@
                     prev.includes(category)
                         ? prev.filter(c => c !== category)
                         : [...prev, category]
+                );
+            };
+
+            // Toggle new user assigned item
+            const toggleNewUserAssignedItem = (itemIndex) => {
+                setNewUserAssignedItems(prev =>
+                    prev.includes(itemIndex)
+                        ? prev.filter(i => i !== itemIndex)
+                        : [...prev, itemIndex]
                 );
             };
 
@@ -3005,16 +3016,24 @@
                                         </div>
                                         <div className="bg-orange-50 rounded-lg p-4 text-center">
                                             {(() => {
-                                                // Calculate total assigned tags across all users
-                                                let totalAssignedTags = 0;
+                                                // Calculate total assigned items across all users
+                                                let totalAssignedItems = 0;
                                                 Object.values(registeredUsers).forEach(userData => {
                                                     if (userData.assignedItems && Array.isArray(userData.assignedItems)) {
-                                                        totalAssignedTags += userData.assignedItems.length;
+                                                        totalAssignedItems += userData.assignedItems.length;
                                                     }
                                                 });
                                                 
-                                                const coveragePct = stats.totalItems > 0 
-                                                    ? Math.round((stats.totalItems / totalAssignedTags) * 100) 
+                                                // Count how many actual tags were made
+                                                let totalTagsMade = 0;
+                                                Object.values(allTags).forEach(itemTags => {
+                                                    if (Array.isArray(itemTags)) {
+                                                        totalTagsMade += itemTags.length;
+                                                    }
+                                                });
+                                                
+                                                const coveragePct = totalAssignedItems > 0 
+                                                    ? Math.round((totalTagsMade / totalAssignedItems) * 100) 
                                                     : 0;
                                                 
                                                 return (
@@ -3022,10 +3041,10 @@
                                                         <div className="text-3xl font-bold text-orange-600">{coveragePct}%</div>
                                                         <div className="text-gray-600">כיסוי ממוצע</div>
                                                         <div className="text-sm text-gray-500 mt-1">
-                                                            {stats.totalItems} תיוגים מוקצים מתוך {totalAssignedTags} פריטים
+                                                            {totalTagsMade} תיוגים בוצעו מתוך {totalAssignedItems} הוקצו
                                                         </div>
                                                         <div className="text-xs text-gray-400 mt-1">
-                                                            כיסוי תיוגים: {stats.totalItems > 0 ? (stats.totalItems / totalAssignedTags).toFixed(2) : 0}x
+                                                            כיסוי תיוגים: {totalAssignedItems > 0 ? (totalTagsMade / totalAssignedItems).toFixed(2) : 0}x
                                                         </div>
                                                     </>
                                                 );
@@ -3219,6 +3238,270 @@
                                 </div>
 
                                 {/* Top Taggers Leaderboard removed per request */}
+
+                                {/* All Tags Table */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
+                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">כל התיוגים</h2>
+                                    
+                                    {/* Filters */}
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">מתייג</label>
+                                            <select
+                                                value={tagsFilterUser}
+                                                onChange={(e) => setTagsFilterUser(e.target.value)}
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            >
+                                                <option value="">כל המתייגים</option>
+                                                {getAllUsers().map(user => (
+                                                    <option key={user} value={user}>{user}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">מזהה</label>
+                                            <input
+                                                type="text"
+                                                value={tagsFilterItemId}
+                                                onChange={(e) => setTagsFilterItemId(e.target.value)}
+                                                placeholder="חפש מזהה..."
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">קטגוריה</label>
+                                            <select
+                                                value={tagsFilterCategory}
+                                                onChange={(e) => setTagsFilterCategory(e.target.value)}
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            >
+                                                <option value="">כל הקטגוריות</option>
+                                                {categories.map(cat => (
+                                                    <option key={cat} value={cat}>{cat}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">פודקאסט</label>
+                                            <select
+                                                value={tagsFilterPodcast}
+                                                onChange={(e) => setTagsFilterPodcast(e.target.value)}
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            >
+                                                <option value="">כל הפודקאסטים</option>
+                                                {[...new Set(getAllTagsFlat().map(t => t.podcast_id).filter(Boolean))].map(pod => (
+                                                    <option key={pod} value={pod}>{pod}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">חיפוש טקסט</label>
+                                            <input
+                                                type="text"
+                                                value={tagsSearchTerm}
+                                                onChange={(e) => setTagsSearchTerm(e.target.value)}
+                                                placeholder="חפש..."
+                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Clear Filters Button */}
+                                    {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsFilterItemId || tagsSearchTerm) && (
+                                        <button
+                                            onClick={() => {
+                                                setTagsFilterUser('');
+                                                setTagsFilterCategory('');
+                                                setTagsFilterPodcast('');
+                                                setTagsFilterItemId('');
+                                                setTagsSearchTerm('');
+                                            }}
+                                            className="mb-3 px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm text-gray-700"
+                                        >
+                                            × נקה פילטרים
+                                        </button>
+                                    )}
+                                    
+                                    {(() => {
+                                        // Filter the tags
+                                        let filteredTags = getAllTagsFlat();
+                                        
+                                        if (tagsFilterUser) {
+                                            filteredTags = filteredTags.filter(t => t.username === tagsFilterUser);
+                                        }
+                                        if (tagsFilterItemId) {
+                                            const idTerm = tagsFilterItemId.toLowerCase();
+                                            filteredTags = filteredTags.filter(t => t.itemId.toLowerCase().includes(idTerm));
+                                        }
+                                        if (tagsFilterCategory) {
+                                            filteredTags = filteredTags.filter(t => t.tags.includes(tagsFilterCategory));
+                                        }
+                                        if (tagsFilterPodcast) {
+                                            filteredTags = filteredTags.filter(t => t.podcast_id === tagsFilterPodcast);
+                                        }
+                                        if (tagsSearchTerm) {
+                                            const term = tagsSearchTerm.toLowerCase();
+                                            filteredTags = filteredTags.filter(t => 
+                                                t.text_before.toLowerCase().includes(term) ||
+                                                t.text_after.toLowerCase().includes(term)
+                                            );
+                                        }
+                                        
+                                        return filteredTags.length > 0 ? (
+                                            <>
+                                                <div className="text-sm text-gray-500 mb-2">
+                                                    מציג {filteredTags.length} תיוגים {filteredTags.length !== getAllTagsFlat().length && `(מתוך ${getAllTagsFlat().length})`}
+                                                </div>
+                                                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                                    <thead className="sticky top-0 bg-white">
+                                                        <tr className="border-b border-gray-200">
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">מתייג</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">מזהה</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">פודקאסט</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">זמן השתיקה באודיו</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">זמן השתיקה</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">דובר</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">טקסט לפני</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">טקסט אחרי</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">תיוג</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">הערה</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">תאריך</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">ניגן</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">▶</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">⏸</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">⏩</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">⏪</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">📍 היסטוריה</th>
+                                                            <th className="pb-3 px-2 text-gray-600 font-medium">פעולות</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {filteredTags.map((tag, idx) => (
+                                                            <tr key={`${tag.itemId}-${tag.username}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50">
+                                                                <td className="py-2 px-2 font-medium">{tag.username}</td>
+                                                                <td className="py-2 px-2 text-xs text-gray-500">{tag.itemId}</td>
+                                                                <td className="py-2 px-2 text-xs max-w-xs truncate" title={tag.podcast_id}>
+                                                                    {tag.podcast_id.substring(0, 15)}
+                                                                </td>
+                                                                <td className="py-2 px-2 text-xs" dir="ltr">{tag.silence_offset_hms || '-'}</td>
+                                                                <td className="py-2 px-2">{tag.silence_duration.toFixed(2)}s</td>
+                                                                <td className="py-2 px-2">{tag.speaker} → {tag.next_speaker}</td>
+                                                                <td className="py-2 px-2 max-w-xs truncate" title={tag.text_before}>
+                                                                    {tag.text_before.substring(0, 30)}...
+                                                                </td>
+                                                                <td className="py-2 px-2 max-w-xs truncate" title={tag.text_after}>
+                                                                    {tag.text_after.substring(0, 30)}...
+                                                                </td>
+                                                                <td className="py-2 px-2">
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {tag.tags.map(t => (
+                                                                            <span key={t} className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                                                                {t}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-2 px-2 max-w-xs text-sm">
+                                                                    <div className="truncate" title={tag.note || 'אין הערה'}>
+                                                                        {tag.note ? (
+                                                                            <span className="text-gray-700">{tag.note}</span>
+                                                                        ) : (
+                                                                            <span className="text-gray-400 italic">-</span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-2 px-2 text-xs text-gray-500">
+                                                                    {new Date(tag.timestamp).toLocaleDateString('he-IL')}
+                                                                </td>
+                                                                <td className="py-2 px-2 text-center">
+                                                                    {tag.audio_played ? (
+                                                                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">✓</span>
+                                                                    ) : (
+                                                                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">✗</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2 px-2 text-center">
+                                                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                                                        {tag.play_count || 0}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2 px-2 text-center">
+                                                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">
+                                                                        {tag.pause_count || 0}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2 px-2 text-center">
+                                                                    <span className="px-2 py-1 bg-teal-100 text-teal-700 rounded text-xs">
+                                                                        {tag.seek_forward_count || 0}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2 px-2 text-center">
+                                                                    <span className="px-2 py-1 bg-pink-100 text-pink-700 rounded text-xs">
+                                                                        {tag.seek_backward_count || 0}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2 px-2 text-xs">
+                                                                    {tag.audio_history && tag.audio_history.length > 0 ? (
+                                                                        <div className="space-y-1 max-h-24 overflow-y-auto text-gray-700 text-[10px] leading-tight">
+                                                                            {tag.audio_history.map((event, i) => {
+                                                                                const eventNames = {
+                                                                                    'play': '▶',
+                                                                                    'pause': '⏸',
+                                                                                    'seek_forward': '⏩',
+                                                                                    'seek_backward': '⏪',
+                                                                                    'finished': '🏁'
+                                                                                };
+                                                                                
+                                                                                let timeText = '';
+                                                                                const from = event.fromTime !== undefined ? parseFloat(event.fromTime) : parseFloat(event.audioTime || 0);
+                                                                                
+                                                                                if (event.type.includes('seek') && event.toTime !== undefined && event.toTime !== null) {
+                                                                                    const to = parseFloat(event.toTime);
+                                                                                    if (event.type === 'seek_forward') {
+                                                                                        timeText = `${formatTime(from)} ➡ ${formatTime(to)}`;
+                                                                                    } else {
+                                                                                        timeText = `${formatTime(from)} ⬅ ${formatTime(to)}`;
+                                                                                    }
+                                                                                } else {
+                                                                                    timeText = formatTime(from);
+                                                                                }
+
+                                                                                return (
+                                                                                    <div key={i} className="flex items-center gap-1 whitespace-nowrap">
+                                                                                        <span className="font-bold text-blue-600 w-4">{eventNames[event.type] || event.type}</span>
+                                                                                        <span className="text-gray-500">{timeText}</span>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-gray-400">-</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2 px-2">
+                                                                    <button
+                                                                        onClick={() => deleteTagEntry(tag.itemId, tag.username)}
+                                                                        className="p-1 text-red-500 hover:bg-red-100 rounded transition"
+                                                                        title="מחק תיוג"
+                                                                    >
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                                        </svg>
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="text-center text-gray-500 py-8">
+                                                {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsFilterItemId || tagsSearchTerm) ? 'אין תיוגים מתאימים לפילטרים' : 'אין עדיין תיוגים'}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
 
                                 {/* User Stats Table */}
                                 <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
@@ -3692,270 +3975,6 @@
                                         );
                                     })()}
                                 </div>
-
-                                {/* All Tags Table */}
-                                <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
-                                    <h2 className="text-xl font-semibold mb-4 text-gray-800">כל התיוגים</h2>
-                                    
-                                    {/* Filters */}
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-                                        <div>
-                                            <label className="block text-xs text-gray-500 mb-1">מתייג</label>
-                                            <select
-                                                value={tagsFilterUser}
-                                                onChange={(e) => setTagsFilterUser(e.target.value)}
-                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                            >
-                                                <option value="">כל המתייגים</option>
-                                                {getAllUsers().map(user => (
-                                                    <option key={user} value={user}>{user}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs text-gray-500 mb-1">מזהה</label>
-                                            <input
-                                                type="text"
-                                                value={tagsFilterItemId}
-                                                onChange={(e) => setTagsFilterItemId(e.target.value)}
-                                                placeholder="חפש מזהה..."
-                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs text-gray-500 mb-1">קטגוריה</label>
-                                            <select
-                                                value={tagsFilterCategory}
-                                                onChange={(e) => setTagsFilterCategory(e.target.value)}
-                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                            >
-                                                <option value="">כל הקטגוריות</option>
-                                                {categories.map(cat => (
-                                                    <option key={cat} value={cat}>{cat}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs text-gray-500 mb-1">פודקאסט</label>
-                                            <select
-                                                value={tagsFilterPodcast}
-                                                onChange={(e) => setTagsFilterPodcast(e.target.value)}
-                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                            >
-                                                <option value="">כל הפודקאסטים</option>
-                                                {[...new Set(getAllTagsFlat().map(t => t.podcast_id).filter(Boolean))].map(pod => (
-                                                    <option key={pod} value={pod}>{pod}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs text-gray-500 mb-1">חיפוש טקסט</label>
-                                            <input
-                                                type="text"
-                                                value={tagsSearchTerm}
-                                                onChange={(e) => setTagsSearchTerm(e.target.value)}
-                                                placeholder="חפש..."
-                                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Clear Filters Button */}
-                                    {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsFilterItemId || tagsSearchTerm) && (
-                                        <button
-                                            onClick={() => {
-                                                setTagsFilterUser('');
-                                                setTagsFilterCategory('');
-                                                setTagsFilterPodcast('');
-                                                setTagsFilterItemId('');
-                                                setTagsSearchTerm('');
-                                            }}
-                                            className="mb-3 px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm text-gray-700"
-                                        >
-                                            × נקה פילטרים
-                                        </button>
-                                    )}
-                                    
-                                    {(() => {
-                                        // Filter the tags
-                                        let filteredTags = getAllTagsFlat();
-                                        
-                                        if (tagsFilterUser) {
-                                            filteredTags = filteredTags.filter(t => t.username === tagsFilterUser);
-                                        }
-                                        if (tagsFilterItemId) {
-                                            const idTerm = tagsFilterItemId.toLowerCase();
-                                            filteredTags = filteredTags.filter(t => t.itemId.toLowerCase().includes(idTerm));
-                                        }
-                                        if (tagsFilterCategory) {
-                                            filteredTags = filteredTags.filter(t => t.tags.includes(tagsFilterCategory));
-                                        }
-                                        if (tagsFilterPodcast) {
-                                            filteredTags = filteredTags.filter(t => t.podcast_id === tagsFilterPodcast);
-                                        }
-                                        if (tagsSearchTerm) {
-                                            const term = tagsSearchTerm.toLowerCase();
-                                            filteredTags = filteredTags.filter(t => 
-                                                t.text_before.toLowerCase().includes(term) ||
-                                                t.text_after.toLowerCase().includes(term)
-                                            );
-                                        }
-                                        
-                                        return filteredTags.length > 0 ? (
-                                            <>
-                                                <div className="text-sm text-gray-500 mb-2">
-                                                    מציג {filteredTags.length} תיוגים {filteredTags.length !== getAllTagsFlat().length && `(מתוך ${getAllTagsFlat().length})`}
-                                                </div>
-                                                <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                                                    <thead className="sticky top-0 bg-white">
-                                                        <tr className="border-b border-gray-200">
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">מתייג</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">מזהה</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">פודקאסט</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">זמן השתיקה באודיו</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">זמן השתיקה</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">דובר</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">טקסט לפני</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">טקסט אחרי</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">תיוג</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">הערה</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">תאריך</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">ניגן</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">▶</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">⏸</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">⏩</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">⏪</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">📍 היסטוריה</th>
-                                                            <th className="pb-3 px-2 text-gray-600 font-medium">פעולות</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {filteredTags.map((tag, idx) => (
-                                                            <tr key={`${tag.itemId}-${tag.username}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50">
-                                                                <td className="py-2 px-2 font-medium">{tag.username}</td>
-                                                                <td className="py-2 px-2 text-xs text-gray-500">{tag.itemId}</td>
-                                                                <td className="py-2 px-2 text-xs max-w-xs truncate" title={tag.podcast_id}>
-                                                                    {tag.podcast_id.substring(0, 15)}
-                                                                </td>
-                                                                <td className="py-2 px-2 text-xs" dir="ltr">{tag.silence_offset_hms || '-'}</td>
-                                                                <td className="py-2 px-2">{tag.silence_duration.toFixed(2)}s</td>
-                                                                <td className="py-2 px-2">{tag.speaker} → {tag.next_speaker}</td>
-                                                                <td className="py-2 px-2 max-w-xs truncate" title={tag.text_before}>
-                                                                    {tag.text_before.substring(0, 30)}...
-                                                                </td>
-                                                                <td className="py-2 px-2 max-w-xs truncate" title={tag.text_after}>
-                                                                    {tag.text_after.substring(0, 30)}...
-                                                                </td>
-                                                                <td className="py-2 px-2">
-                                                                    <div className="flex flex-wrap gap-1">
-                                                                        {tag.tags.map(t => (
-                                                                            <span key={t} className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                                                                                {t}
-                                                                            </span>
-                                                                        ))}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="py-2 px-2 max-w-xs text-sm">
-                                                                    <div className="truncate" title={tag.note || 'אין הערה'}>
-                                                                        {tag.note ? (
-                                                                            <span className="text-gray-700">{tag.note}</span>
-                                                                        ) : (
-                                                                            <span className="text-gray-400 italic">-</span>
-                                                                        )}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="py-2 px-2 text-xs text-gray-500">
-                                                                    {new Date(tag.timestamp).toLocaleDateString('he-IL')}
-                                                                </td>
-                                                                <td className="py-2 px-2 text-center">
-                                                                    {tag.audio_played ? (
-                                                                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">✓</span>
-                                                                    ) : (
-                                                                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">✗</span>
-                                                                    )}
-                                                                </td>
-                                                                <td className="py-2 px-2 text-center">
-                                                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                                                        {tag.play_count || 0}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-2 px-2 text-center">
-                                                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">
-                                                                        {tag.pause_count || 0}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-2 px-2 text-center">
-                                                                    <span className="px-2 py-1 bg-teal-100 text-teal-700 rounded text-xs">
-                                                                        {tag.seek_forward_count || 0}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-2 px-2 text-center">
-                                                                    <span className="px-2 py-1 bg-pink-100 text-pink-700 rounded text-xs">
-                                                                        {tag.seek_backward_count || 0}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-2 px-2 text-xs">
-                                                                    {tag.audio_history && tag.audio_history.length > 0 ? (
-                                                                        <div className="space-y-1 max-h-24 overflow-y-auto text-gray-700 text-[10px] leading-tight">
-                                                                            {tag.audio_history.map((event, i) => {
-                                                                                const eventNames = {
-                                                                                    'play': '▶',
-                                                                                    'pause': '⏸',
-                                                                                    'seek_forward': '⏩',
-                                                                                    'seek_backward': '⏪',
-                                                                                    'finished': '🏁'
-                                                                                };
-                                                                                
-                                                                                let timeText = '';
-                                                                                const from = event.fromTime !== undefined ? parseFloat(event.fromTime) : parseFloat(event.audioTime || 0);
-                                                                                
-                                                                                if (event.type.includes('seek') && event.toTime !== undefined && event.toTime !== null) {
-                                                                                    const to = parseFloat(event.toTime);
-                                                                                    if (event.type === 'seek_forward') {
-                                                                                        timeText = `${formatTime(from)} ➡ ${formatTime(to)}`;
-                                                                                    } else {
-                                                                                        timeText = `${formatTime(from)} ⬅ ${formatTime(to)}`;
-                                                                                    }
-                                                                                } else {
-                                                                                    timeText = formatTime(from);
-                                                                                }
-
-                                                                                return (
-                                                                                    <div key={i} className="flex items-center gap-1 whitespace-nowrap">
-                                                                                        <span className="font-bold text-blue-600 w-4">{eventNames[event.type] || event.type}</span>
-                                                                                        <span className="text-gray-500">{timeText}</span>
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="text-gray-400">-</span>
-                                                                    )}
-                                                                </td>
-                                                                <td className="py-2 px-2">
-                                                                    <button
-                                                                        onClick={() => deleteTagEntry(tag.itemId, tag.username)}
-                                                                        className="p-1 text-red-500 hover:bg-red-100 rounded transition"
-                                                                        title="מחק תיוג"
-                                                                    >
-                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                            <polyline points="3 6 5 6 21 6"></polyline>
-                                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                                        </svg>
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <div className="text-center text-gray-500 py-8">
-                                                {(tagsFilterUser || tagsFilterCategory || tagsFilterPodcast || tagsFilterItemId || tagsSearchTerm) ? 'אין תיוגים מתאימים לפילטרים' : 'אין עדיין תיוגים'}
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
                             </div>
                         )}
 
@@ -4016,8 +4035,44 @@
                                             <label htmlFor="newUserAdmin" className="text-sm text-gray-700">מנהל</label>
                                         </div>
                                         
-
-              
+                                        {/* Manual Item Assignment */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                הקצאת פריטים ידנית ({newUserAssignedItems.length} נבחרו)
+                                            </label>
+                                            <div className="border border-gray-300 rounded-lg p-3 max-h-60 overflow-y-auto bg-gray-50">
+                                                <div className="mb-2 flex items-center gap-2 sticky top-0 bg-gray-50 pb-2">
+                                                    <button
+                                                        onClick={() => setNewUserAssignedItems(newUserAssignedItems.length === dataset.length ? [] : dataset.map((_, idx) => idx))}
+                                                        className="text-xs px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition"
+                                                    >
+                                                        {newUserAssignedItems.length === dataset.length ? 'בטל הכל' : 'בחר הכל'}
+                                                    </button>
+                                                    <span className="text-xs text-gray-500">
+                                                        {newUserAssignedItems.length} מתוך {dataset.length}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    {dataset.map((item, idx) => (
+                                                        <div key={idx} className="flex items-center gap-2 p-1.5 hover:bg-white rounded">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={newUserAssignedItems.includes(idx)}
+                                                                onChange={() => toggleNewUserAssignedItem(idx)}
+                                                                className="w-4 h-4 text-blue-600 rounded"
+                                                            />
+                                                            <label className="text-xs text-gray-700 cursor-pointer flex-1" onClick={() => toggleNewUserAssignedItem(idx)}>
+                                                                <span className="font-mono text-blue-600 font-medium">#{idx}</span> - {item.id}
+                                                                <span className="text-gray-500 block truncate">{item.text_before?.substring(0, 50)}...</span>
+                                                            </label>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                אם לא תבחר פריטים, המשתמש יקבל גישה לכל הפריטים
+                                            </p>
+                                        </div>
                                         
                                         <button
                                             onClick={addUser}
